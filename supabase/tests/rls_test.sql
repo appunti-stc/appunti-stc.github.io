@@ -433,6 +433,17 @@ select pg_temp.expect((select points from profiles where email = 'l.gatti@campus
 select pg_temp.expect((select count(*) from app_settings where key = 'points_v2') = 1, 'ricalcolo eseguito una volta sola');
 delete from courses where name = 'Corso ricalcolo';
 
+-- ===== Tour di benvenuto =====
+insert into auth.users values ('00000000-0000-0000-0000-0000000000f1', 'nuova.matricola@campus.unimib.it', '{"full_name":"Nuova Matricola"}');
+set role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000f1","email":"nuova.matricola@campus.unimib.it"}', false);
+select pg_temp.expect(tour_pending(), 'nuovo account: tour da mostrare');
+select tour_done();
+select pg_temp.expect(not tour_pending(), 'tour visto: non ricompare (anche su altri dispositivi)');
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000c","email":"intruso@gmail.com"}', false);
+select pg_temp.expect(not tour_pending(), 'esterni: niente tour');
+reset role;
+
 -- ===== Docenti =====
 select pg_temp.expect((select count(*) from professors) = 62, 'elenco docenti caricato una sola volta (62)');
 select pg_temp.expect((select courses from professors where last_name = 'Di Credico') like 'Chimica generale%', 'dati docenti corretti');

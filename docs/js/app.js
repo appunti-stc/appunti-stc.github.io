@@ -4,7 +4,7 @@
 
   // Versione del sito: deve coincidere con data-v in index.html. Se Safari ha in
   // memoria una pagina principale vecchia, la ricarichiamo (una volta) aggirando la cache.
-  var VERSION = '20261018k';
+  var VERSION = '20261018l';
   if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('reload-v') === VERSION; sessionStorage.setItem('reload-v', VERSION); } catch (e) { /* ignora */ }
@@ -681,7 +681,8 @@
       .sort(function (a, b) { return (a.role === 'admin' ? 0 : 1) - (b.role === 'admin' ? 0 : 1) || a.name.localeCompare(b.name); });
     render('admin',
       '<div class="page-head"><div><p class="eyebrow">Gestione piattaforma</p><h1>Amministrazione</h1>' +
-        '<p class="muted">Gli amministratori possono modificare i corsi ed eliminare corsi e materiali.</p></div></div>' +
+        '<p class="muted">Gli amministratori possono modificare i corsi ed eliminare corsi e materiali.</p></div>' +
+        '<button class="btn btn-ghost" type="button" data-action="start-tour">' + icon('flag') + 'Avvia il tour di benvenuto</button></div>' +
       '<section class="stats">' + stat('users', stats.users, 'Utenti') + stat('book', stats.courses, 'Corsi') +
         stat('folder', stats.files, 'Materiali') + stat('archive', bytes(stats.bytes), 'Spazio usato (totale)') + '</section>' +
       reportsPanel(reports) +
@@ -1183,6 +1184,7 @@
         el.disabled = false;
         return;
       }
+      case 'start-tour': startTour(); return;
       case 'go-back': {
         if (history.length > 1) history.back(); else go('#/');
         return;
@@ -1463,9 +1465,21 @@
     route();
   });
 
+  // Tour di benvenuto al primo accesso dell'account
+  function startTour() {
+    if (!window.Tour || window.Tour.running() || !state.user) return;
+    window.Tour.start({ name: state.user.name, onDone: function () { Api.tourDone(); } });
+  }
+  function maybeTour() {
+    Api.tourPending().then(function (pending) { if (pending) setTimeout(startTour, 700); }, function () {});
+  }
+
   // ---- Avvio -------------------------------------------------------------------------
   Api.init().then(function (res) {
-    if (res && res.user) { state.user = res.user; return route(); }
+    if (res && res.user) {
+      state.user = res.user;
+      return route().then(maybeTour);
+    }
     if (res && res.error === 'domain') {
       return loginPage('L\'account ' + (res.email || '') + ' non è un account @' + CFG.allowedDomain + '. Esci da Google e accedi con l\'account universitario.');
     }

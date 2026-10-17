@@ -401,6 +401,13 @@
 
       async storageCheck() { return b2({ action: 'storage-check' }); },
 
+      // Tour di benvenuto: true se l'account non l'ha ancora visto (null se il database non è aggiornato)
+      async tourPending() {
+        var res = await sb.rpc('tour_pending');
+        return res.error ? null : Boolean(res.data);
+      },
+      tourDone() { sb.rpc('tour_done').then(function () {}, function () {}); },
+
       // Importazione dal vecchio Drive (null se il database non è ancora aggiornato)
       async importStatus() {
         var res = await sb.rpc('import_status');
@@ -612,6 +619,10 @@
         var sum = function (rec) { return files.filter(function (f) { return rec === (f.kind === 'audio' || f.kind === 'video'); }).reduce(function (a, f) { return a + f.size; }, 0); };
         return { used: sum(false), quota: 10200547328, where: 'anteprima', r2: { used: sum(true), quota: 10200547328 } };
       },
+      async tourPending() {
+        try { return !localStorage.getItem('tour-done-' + (me && me.id)); } catch (e) { return false; }
+      },
+      tourDone() { try { localStorage.setItem('tour-done-' + (me && me.id), '1'); } catch (e) { /* ignora */ } },
       async storageCheck() {
         return { origin: location.origin, results: [{ store: 'b2', ok: true, steps: [], message: 'Anteprima: nessun archivio reale da verificare.' }] };
       },

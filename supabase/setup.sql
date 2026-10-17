@@ -154,6 +154,8 @@ alter table public.profiles add column if not exists upload_count integer not nu
 alter table public.profiles add column if not exists banned_at timestamptz;
 alter table public.profiles add column if not exists banned_reason text;
 alter table public.profiles add column if not exists banned_by uuid references public.profiles(id) on delete set null;
+-- Tour di benvenuto: mostrato una volta per account, al primo accesso (anche cambiando dispositivo)
+alter table public.profiles add column if not exists onboarded_at timestamptz;
 
 -- Pagina "Rappresentanti": contatti e link utili, modificabili dagli admin.
 -- I contatti personali NON sono nel codice pubblico: stanno solo qui, visibili agli studenti loggati.
@@ -623,6 +625,24 @@ do $$ begin
     insert into app_settings (key, value) values ('points_v2', 'true');
   end if;
 end $$;
+
+-- Chi era già iscritto quando è arrivato il tour non lo vede in automatico (solo i nuovi account)
+do $$ begin
+  if not exists (select 1 from app_settings where key = 'tour_init') then
+    update profiles set onboarded_at = coalesce(onboarded_at, now());
+    insert into app_settings (key, value) values ('tour_init', 'true');
+  end if;
+end $$;
+
+create or replace function public.tour_pending()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_campus() and exists (select 1 from profiles where id = auth.uid() and onboarded_at is null)
+$$;
+
+create or replace function public.tour_done()
+returns void language sql volatile security definer set search_path = public as $$
+  update profiles set onboarded_at = coalesce(onboarded_at, now()) where id = auth.uid() and public.is_campus()
+$$;
 
 -- Classifica: solo utenti attivi, senza dati riservati
 create or replace function public.leaderboard()
