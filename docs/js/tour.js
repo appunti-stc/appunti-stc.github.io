@@ -93,9 +93,11 @@
       else if (a === 'next') { if (state.i >= STEPS.length - 1) finish(true); else go(state.i + 1); }
     });
     document.addEventListener('keydown', onKey);
-    window.addEventListener('resize', place);
+    window.addEventListener('resize', onResize);
     requestAnimationFrame(function () { root.classList.add('on'); });
   }
+
+  function onResize() { place(false); }
 
   function onKey(e) {
     if (!state) return;
@@ -121,56 +123,86 @@
   function go(i) {
     if (i < 0 || i >= STEPS.length) return;
     var step = STEPS[i];
+    var first = state.i === -1;
     state.i = i;
     // su telefono la barra laterale è nascosta: la apro per i passi che la riguardano
     if (narrow()) document.body.classList.toggle('sidebar-open', Boolean(step.sidebar));
+    // 1) il fumetto svanisce dov'è; 2) cambio contenuto e posizione; 3) ricompare nel posto nuovo
     el.card.classList.remove('show');
-    el.root.classList.toggle('centered', !step.target);
-    el.root.classList.toggle('is-welcome', Boolean(step.welcome));
-    setTimeout(function () {
+    if (!step.target) el.spot.classList.remove('show');
+    clearTimeout(state.timer);
+    state.timer = setTimeout(function () {
+      // passaggio tra finestra centrale e fumetto: il fumetto è invisibile, lo sposto di colpo
+      jump(el.card, function () {
+        el.root.classList.toggle('centered', !step.target);
+        el.root.classList.toggle('is-welcome', Boolean(step.welcome));
+        if (!step.target) { el.card.style.top = el.card.style.left = ''; el.card.setAttribute('data-side', 'center'); }
+      });
       el.emoji.textContent = step.emoji || '';
       el.title.textContent = typeof step.title === 'function' ? step.title(state.name) : step.title;
       el.text.textContent = step.text;
       el.next.textContent = step.next || 'Avanti';
       el.back.hidden = i === 0 || step.final;
       el.dots.querySelectorAll('span').forEach(function (d, k) { d.className = k === i ? 'on' : k < i ? 'done' : ''; });
-      place();
-      el.card.classList.add('show');
-      el.next.focus({ preventScroll: true });
+      place(true);
+      requestAnimationFrame(function () {
+        el.card.classList.add('show');
+        el.next.focus({ preventScroll: true });
+      });
       if (step.final) burst();
-    }, narrow() && step.sidebar ? 260 : 160);
+    }, first ? 0 : (narrow() && step.sidebar ? 300 : 230));
+  }
+
+  // Sposta un elemento senza animazione (es. il riflettore che riappare: niente "volo" dall'angolo)
+  function jump(node, apply) {
+    node.classList.add('no-anim');
+    apply();
+    void node.offsetWidth;
+    node.classList.remove('no-anim');
   }
 
   // Posiziona riflettore e fumetto accanto all'elemento evidenziato
-  function place() {
-    if (!state) return;
+  function place(entering) {
+    if (!state || state.i < 0) return;
     var step = STEPS[state.i];
     var r = targetRect(step);
     var pad = 8;
     if (!r) {
       el.spot.classList.remove('show');
       el.card.style.top = el.card.style.left = '';
+      el.card.setAttribute('data-side', 'center');
       return;
     }
-    el.spot.classList.add('show');
-    el.spot.style.top = (r.top - pad) + 'px';
-    el.spot.style.left = (r.left - pad) + 'px';
-    el.spot.style.width = (r.width + pad * 2) + 'px';
-    el.spot.style.height = (r.height + pad * 2) + 'px';
+    var geo = function () {
+      el.spot.style.top = (r.top - pad) + 'px';
+      el.spot.style.left = (r.left - pad) + 'px';
+      el.spot.style.width = (r.width + pad * 2) + 'px';
+      el.spot.style.height = (r.height + pad * 2) + 'px';
+    };
+    // se il riflettore era spento compare direttamente sull'elemento; se era acceso scivola fin lì
+    if (!el.spot.classList.contains('show')) { jump(el.spot, geo); el.spot.classList.add('show'); } else geo();
+
     var cw = el.card.offsetWidth, ch = el.card.offsetHeight, vw = window.innerWidth, vh = window.innerHeight, gap = 18;
-    var top, left;
+    var top, left, side;
     if (narrow()) { // su telefono il fumetto sta in basso (o in alto se l'elemento è in basso)
       left = (vw - cw) / 2;
-      top = r.top > vh / 2 ? 16 : vh - ch - 16;
+      side = r.top > vh / 2 ? 'top' : 'bottom';
+      top = side === 'top' ? 16 : vh - ch - 16;
     } else if (r.right + gap + cw < vw) { // a destra (voci della barra laterale)
+      side = 'right';
       left = r.right + gap;
       top = Math.min(Math.max(16, r.top + r.height / 2 - ch / 2), vh - ch - 16);
     } else { // sotto (barra di ricerca)
+      side = 'below';
       left = Math.min(Math.max(16, r.left), vw - cw - 16);
       top = Math.min(r.bottom + gap, vh - ch - 16);
     }
-    el.card.style.top = Math.round(top) + 'px';
-    el.card.style.left = Math.round(left) + 'px';
+    var pos = function () {
+      el.card.style.top = Math.round(top) + 'px';
+      el.card.style.left = Math.round(left) + 'px';
+      el.card.setAttribute('data-side', side);
+    };
+    if (entering) jump(el.card, pos); else pos();
   }
 
   function burst() {
@@ -190,7 +222,7 @@
     var done = state.onDone;
     state = null;
     document.removeEventListener('keydown', onKey);
-    window.removeEventListener('resize', place);
+    window.removeEventListener('resize', onResize);
     if (narrow()) document.body.classList.remove('sidebar-open');
     el.root.classList.remove('on');
     setTimeout(function () { if (el.root) el.root.remove(); el = {}; }, 350);
@@ -201,7 +233,7 @@
     start: function (opts) {
       if (state) return;
       opts = opts || {};
-      state = { i: 0, name: String(opts.name || '').split(' ')[0] || 'studente', onDone: opts.onDone };
+      state = { i: -1, name: String(opts.name || '').split(' ')[0] || 'studente', onDone: opts.onDone };
       build();
       go(0);
     },

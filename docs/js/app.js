@@ -4,7 +4,7 @@
 
   // Versione del sito: deve coincidere con data-v in index.html. Se Safari ha in
   // memoria una pagina principale vecchia, la ricarichiamo (una volta) aggirando la cache.
-  var VERSION = '20261018l';
+  var VERSION = '20261018m';
   if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('reload-v') === VERSION; sessionStorage.setItem('reload-v', VERSION); } catch (e) { /* ignora */ }

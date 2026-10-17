@@ -739,16 +739,26 @@ a.info-item > svg { position: absolute; right: 12px; top: 50%; transform: transl
 .tour.on { opacity: 1; }
 .tour-shade { position: absolute; inset: 0; background: rgba(24, 14, 18, .55); transition: opacity .35s; }
 .tour:not(.centered) .tour-shade { opacity: 0; }
-.tour-spot { position: fixed; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(24, 14, 18, .55); opacity: 0; pointer-events: none;
-  transition: top .45s cubic-bezier(.2, .8, .2, 1), left .45s cubic-bezier(.2, .8, .2, 1), width .45s cubic-bezier(.2, .8, .2, 1), height .45s cubic-bezier(.2, .8, .2, 1), opacity .3s; }
-.tour-spot.show { opacity: 1; }
+.tour-spot { position: fixed; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(24, 14, 18, .55); opacity: 0; transform: scale(1.12); pointer-events: none;
+  transition: top .5s cubic-bezier(.22, .9, .25, 1), left .5s cubic-bezier(.22, .9, .25, 1), width .5s cubic-bezier(.22, .9, .25, 1), height .5s cubic-bezier(.22, .9, .25, 1),
+    opacity .35s ease, transform .45s cubic-bezier(.22, .9, .25, 1); }
+.tour-spot.show { opacity: 1; transform: none; }
+.tour-spot.no-anim, .tour-card.no-anim { transition: none !important; }
 .tour-ring { position: absolute; inset: -4px; border: 2px solid var(--accent); border-radius: 14px; animation: tour-pulse 1.6s ease-out infinite; }
 @keyframes tour-pulse { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.12); } }
 .tour-card { position: fixed; width: min(360px, calc(100vw - 32px)); background: var(--surface); color: var(--ink); border-radius: 16px; padding: 22px 22px 16px;
   box-shadow: 0 20px 60px rgba(24, 14, 18, .35); opacity: 0; transform: translateY(10px) scale(.98); transition: opacity .25s ease, transform .3s cubic-bezier(.2, .8, .2, 1); }
-.tour-card.show { opacity: 1; transform: none; }
+.tour-card.show { opacity: 1; transform: none; transition-delay: .08s; }
+/* il fumetto entra dal lato dell'elemento che spiega */
+.tour-card[data-side="right"] { transform: translateX(-14px) scale(.97); }
+.tour-card[data-side="below"] { transform: translateY(-12px) scale(.97); }
+.tour-card[data-side="top"] { transform: translateY(-14px); }
+.tour-card[data-side="bottom"] { transform: translateY(14px); }
+.tour-card[data-side].show { transform: none; }
 .tour.centered .tour-card { top: 50% !important; left: 50% !important; transform: translate(-50%, calc(-50% + 12px)) scale(.96); text-align: center; width: min(420px, calc(100vw - 32px)); padding-top: 30px; }
 .tour.centered .tour-card.show { transform: translate(-50%, -50%); }
+.tour.centered .tour-card[data-side] { transform: translate(-50%, calc(-50% + 12px)) scale(.96); }
+.tour.centered .tour-card[data-side].show { transform: translate(-50%, -50%); }
 .tour-skip { position: absolute; top: 10px; right: 12px; border: 0; background: none; color: var(--muted); font-size: .82rem; font-weight: 600; cursor: pointer; padding: 6px; }
 .tour-skip:hover { color: var(--primary); }
 .tour-emoji { font-size: 1.9rem; line-height: 1; margin-bottom: 8px; }
