@@ -444,6 +444,57 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000
 select pg_temp.expect(not tour_pending(), 'esterni: niente tour');
 reset role;
 
+-- ===== Preferiti, voti, cartelle, "Nuovo", statistiche =====
+reset role;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000a","email":"admin.uno@campus.unimib.it"}', false);
+insert into courses (name) values ('Corso extra');
+select set_config('app.importing', '1', false);
+insert into files (course_id, title, original_name, storage_path, mime, kind, size, uploaded_by, description)
+values ((select id from courses where name = 'Corso extra'), 'Dispensa', 'd.pdf', 'x/d.pdf', 'application/pdf', 'pdf', 1,
+        '00000000-0000-0000-0000-00000000000b', 'Dal vecchio Drive · Cartella: Esercizi / Svolti');
+select set_config('app.importing', '', false);
+\set QUIET on
+set client_min_messages = warning;
+\ir ../setup.sql
+set client_min_messages = notice;
+select pg_temp.expect((select folder from files where title = 'Dispensa') = 'Esercizi / Svolti', 'cartelle ricavate dai file importati');
+set role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000d","email":"l.gatti@campus.unimib.it"}', false);
+-- preferiti
+insert into course_favorites (course_id) values ((select id from courses where name = 'Corso extra'));
+select pg_temp.expect((select count(*) from course_favorites) = 1, 'preferito aggiunto');
+select pg_temp.expect_error($q$insert into course_favorites (user_id, course_id) values ('00000000-0000-0000-0000-00000000000b', (select id from courses where name = 'Corso extra'))$q$, 'niente preferiti a nome di altri');
+-- voti
+select set_config('test.p', (select points from profiles where email = 'n.cognome@campus.unimib.it')::text, false);
+select pg_temp.expect((toggle_vote((select id from files where title = 'Dispensa')) ->> 'count')::int = 1, 'voto "Utile" registrato');
+select pg_temp.expect((select points from profiles where email = 'n.cognome@campus.unimib.it') = current_setting('test.p')::int + 3, '+3 punti a chi ha caricato');
+select pg_temp.expect((select array_agg(x) from my_votes(array[(select id from files where title = 'Dispensa')]) x) is not null, 'so quali file ho votato');
+select pg_temp.expect(not (toggle_vote((select id from files where title = 'Dispensa')) ->> 'voted')::boolean, 'secondo clic: voto tolto');
+select pg_temp.expect((select points from profiles where email = 'n.cognome@campus.unimib.it') = current_setting('test.p')::int
+  and (select vote_count from files where title = 'Dispensa') = 0, 'voto tolto: punti e conteggio tornano indietro');
+select pg_temp.expect_error('select * from file_votes', 'tabella voti non leggibile');
+select pg_temp.expect_error($q$select set_folder((select id from files where title = 'Dispensa'), 'Altro')$q$, 'solo l''autore o un admin cambia la cartella');
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000b","email":"n.cognome@campus.unimib.it"}', false);
+select pg_temp.expect_error($q$select toggle_vote((select id from files where title = 'Dispensa'))$q$, 'non si votano i propri file');
+select set_folder((select id from files where title = 'Dispensa'), 'Temi d''esame');
+select pg_temp.expect((select folder from files where title = 'Dispensa') = 'Temi d''esame', 'l''autore sposta il file in una cartella');
+-- statistiche gonfiate al caricamento: azzerate
+insert into files (course_id, title, original_name, storage_path, mime, kind, size, open_count, vote_count, pinned)
+values ((select id from courses where name = 'Corso extra'), 'Furbo', 'f.pdf', '00000000-0000-0000-0000-00000000000b/f.pdf', 'application/pdf', 'pdf', 1, 9999, 500, true);
+select pg_temp.expect((select open_count = 0 and vote_count = 0 and not pinned from files where title = 'Furbo'), 'aperture, voti e protezione non impostabili da chi carica');
+-- ultima visita
+select pg_temp.expect(visit() is not null, 'prima visita registrata');
+reset role;
+update profiles set seen_at = now() - interval '3 days', prev_seen_at = null where email = 'n.cognome@campus.unimib.it';
+set role authenticated;
+select pg_temp.expect(visit() < now() - interval '2 days', 'dopo giorni: "nuovo" = dall''ultima visita');
+select pg_temp.expect(visit() < now() - interval '2 days', 'nella stessa sessione il riferimento non cambia');
+select pg_temp.expect_error('select admin_stats()', 'statistiche riservate agli admin');
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000a","email":"admin.uno@campus.unimib.it"}', false);
+select pg_temp.expect((admin_stats() ->> 'uploads_7d')::int >= 1 and json_typeof(admin_stats() -> 'top_files') = 'array', 'statistiche per gli admin');
+reset role;
+delete from courses where name = 'Corso extra';
+
 -- ===== Docenti =====
 select pg_temp.expect((select count(*) from professors) = 62, 'elenco docenti caricato una sola volta (62)');
 select pg_temp.expect((select courses from professors where last_name = 'Di Credico') like 'Chimica generale%', 'dati docenti corretti');

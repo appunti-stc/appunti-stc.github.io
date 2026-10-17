@@ -168,6 +168,20 @@ La dashboard mostra a ciascuno i **corsi aperti di recente** (pagina del corso o
 dal più recente; l'elenco è salvato sull'account, quindi è lo stesso su iPad, Mac e telefono.
 Chi non ha ancora aperto corsi vede quelli con più materiali.
 
+## Funzioni per gli studenti
+
+- **Badge "Nuovo"**: i file caricati da altri dopo la tua ultima visita (e "+N nuovi" sui corsi).
+- **Corsi preferiti ⭐**: la stellina su ogni corso; i preferiti stanno sempre in cima alla dashboard.
+- **Utile 👍**: un voto per file (non i propri); chi ha caricato riceve +3 punti per voto.
+- **Cartelle** nei corsi (dal vecchio Drive o scelte al caricamento) come filtri, e **ordinamento**
+  (più recenti, più aperti, più votati, nome).
+- **Avviso doppioni** se si carica un file con lo stesso nome e dimensione di uno già presente.
+- **App sul telefono**: menu utente → "Installa l'app sul telefono" (Android: installazione diretta;
+  iPhone/iPad: Condividi → Aggiungi alla schermata Home).
+- **Tema scuro** automatico se il dispositivo è in modalità scura.
+- **Tour di benvenuto** al primo accesso (avviabile anche da Amministrazione).
+- In Amministrazione: **statistiche** degli ultimi 7 giorni, file più aperti e corsi più usati.
+
 ## Pagina Rappresentanti
 
 Contatti dei rappresentanti e link utili (siti, app, corso sicurezza, esami scoglio, ecc.).

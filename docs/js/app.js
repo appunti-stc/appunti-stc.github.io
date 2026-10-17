@@ -4,7 +4,7 @@
 
   // Versione del sito: deve coincidere con data-v in index.html. Se Safari ha in
   // memoria una pagina principale vecchia, la ricarichiamo (una volta) aggirando la cache.
-  var VERSION = '20261018m';
+  var VERSION = '20261018p';
   if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('reload-v') === VERSION; sessionStorage.setItem('reload-v', VERSION); } catch (e) { /* ignora */ }
@@ -17,7 +17,7 @@
   var CFG = window.APP_CONFIG;
   var Api = window.Api;
   var root = document.getElementById('app');
-  var state = { user: null };
+  var state = { user: null, since: null, favs: [], newCounts: {} };
 
   var KINDS = {
     pdf: { label: 'PDF', plural: 'PDF', icon: 'file-pdf' },
@@ -128,6 +128,7 @@
             '<div class="dropdown" role="menu">' +
               '<div class="dropdown-head"><strong>' + esc(u.name) + '</strong><small>' + esc(u.email) + '</small></div>' +
               '<a href="#/miei" role="menuitem">' + icon('upload') + 'I miei caricamenti</a>' +
+              (isStandalone() ? '' : '<button type="button" role="menuitem" data-action="install-app">' + icon('phone') + 'Installa l\'app sul telefono</button>') +
               '<button type="button" role="menuitem" data-action="logout">' + icon('logout') + 'Esci</button>' +
             '</div>' +
           '</div>' +
@@ -138,6 +139,16 @@
           '<span>' + esc(CFG.disclaimer || 'Materiali condivisi dagli studenti per uso didattico') + ' · <a href="privacy.html">Privacy</a></span></footer>' +
       '</div>';
   }
+
+  // File caricati da altri dopo la mia ultima visita
+  function isNew(f) { return Boolean(state.since && f.created_at > state.since && f.uploaded_by !== state.user.id); }
+  function isFav(id) { return state.favs.indexOf(Number(id)) >= 0; }
+  function favButton(id, extra) {
+    var on = isFav(id);
+    return '<button class="fav-btn' + (on ? ' on' : '') + (extra ? ' ' + extra : '') + '" type="button" data-action="toggle-fav" data-id="' + id + '"' +
+      ' aria-pressed="' + on + '" title="' + (on ? 'Togli dai preferiti' : 'Aggiungi ai preferiti') + '" aria-label="' + (on ? 'Togli dai preferiti' : 'Aggiungi ai preferiti') + '">' + icon('star') + '</button>';
+  }
+  function topFolder(f) { return f.folder ? String(f.folder).split(' / ')[0] : ''; }
 
   // Chi ha caricato il file: il profilo, oppure il nome dell'autore sul vecchio Drive finché non si iscrive
   function authorOf(f) { return f.uploader ? f.uploader.name : (f.author_name || 'utente rimosso'); }
@@ -247,8 +258,19 @@
       '</div></div>';
   }
   function courseItem(c) {
-    return '<div class="course-item">' + courseCard(c) + (isAdmin() ? courseMenu(c) : '') + '</div>';
+    return '<div class="course-item' + (isAdmin() ? ' has-menu' : '') + '">' + courseCard(c) + favButton(c.id) + (isAdmin() ? courseMenu(c) : '') + '</div>';
   }
+  // Senza menu ⋯ (dashboard)
+  function courseTile(c) { return '<div class="course-item">' + courseCard(c) + favButton(c.id) + '</div>'; }
+
+  // Ordinamento dei file nella pagina del corso
+  var ORDERS = {
+    recenti: { label: 'Più recenti', sort: function (a, b) { return String(b.created_at).localeCompare(String(a.created_at)); } },
+    aperti: { label: 'Più aperti', sort: function (a, b) { return (b.open_count || 0) - (a.open_count || 0) || String(b.created_at).localeCompare(String(a.created_at)); } },
+    votati: { label: 'Più votati', sort: function (a, b) { return (b.vote_count || 0) - (a.vote_count || 0) || (b.open_count || 0) - (a.open_count || 0); } },
+    nome: { label: 'Nome (A–Z)', sort: function (a, b) { return String(a.title).localeCompare(String(b.title), 'it', { numeric: true }); } },
+  };
+  var currentCourseFiles = []; // file del corso aperto (per l'avviso doppioni)
 
   var YEAR_PREVIEW = 6; // corsi visibili per anno di corso prima di "Mostra altri"
 
@@ -258,7 +280,8 @@
       '<svg class="cover-ic"><use href="#i-book"/></svg></div>' +
       '<div class="course-info"><h3>' + esc(c.name) + '</h3>' +
       '<p class="muted">' + (c.teacher ? 'Prof. ' + esc(c.teacher) : 'Docente non indicato') + (c.year ? ' · ' + esc(c.year) : '') + '</p>' +
-      '<div class="course-foot"><span>' + icon('folder') + c.file_count + ' ' + (c.file_count === 1 ? 'materiale' : 'materiali') + '</span></div>' +
+      '<div class="course-foot"><span>' + icon('folder') + c.file_count + ' ' + (c.file_count === 1 ? 'materiale' : 'materiali') + '</span>' +
+        (state.newCounts[c.id] ? '<span class="badge-new">+' + state.newCounts[c.id] + ' nuov' + (state.newCounts[c.id] === 1 ? 'o' : 'i') + '</span>' : '') + '</div>' +
       '</div></a>';
   }
 
@@ -268,11 +291,13 @@
       '<a class="file-thumb kind-' + f.kind + '" href="#/file/' + f.id + '" tabindex="-1" aria-hidden="true">' +
         (f.kind === 'image' && f.storage === 'supabase' ? '<img alt="" data-thumb="' + f.id + '">' : icon(k.icon)) + '</a>' +
       '<div class="file-body">' +
-        '<a class="file-title" href="#/file/' + f.id + '">' + esc(f.title) + '</a>' +
+        '<a class="file-title" href="#/file/' + f.id + '">' + esc(f.title) + '</a>' + (isNew(f) ? '<span class="badge-new">Nuovo</span>' : '') +
         '<div class="file-meta"><span class="tag kind-' + f.kind + '">' + k.label + '</span>' +
           (withCourse && f.course ? '<a class="meta-link" href="#/corso/' + f.course.id + '">' + esc(f.course.name) + '</a><span class="dot">·</span>' : '') +
+          (f.folder ? '<span class="meta-folder">' + icon('folder') + esc(f.folder) + '</span><span class="dot">·</span>' : '') +
           '<span>' + bytes(f.size) + '</span><span class="dot">·</span><span>' + date(f.created_at) + '</span>' +
           '<span class="dot">·</span><span>di ' + authorLink(f) + '</span>' +
+          (f.vote_count ? '<span class="dot">·</span><span class="meta-votes" title="Votato utile">' + icon('thumb') + f.vote_count + '</span>' : '') +
         '</div>' +
       '</div>' +
       '<div class="file-actions">' +
@@ -335,7 +360,10 @@
     var stats = res[0], courses = res[1], recent = res[2], mine = res[3], visited = res[4] && res[4].length ? res[4] : recentCourseIds();
     var byId = {};
     courses.forEach(function (c) { byId[c.id] = c; });
-    var top = visited.map(function (id) { return byId[id]; }).filter(Boolean).slice(0, 6);
+    // prima i preferiti ⭐, poi i corsi aperti di recente
+    var favCourses = state.favs.map(function (id) { return byId[id]; }).filter(Boolean);
+    var top = favCourses.slice();
+    visited.map(function (id) { return byId[id]; }).filter(Boolean).forEach(function (c) { if (top.length < 6 && top.indexOf(c) < 0) top.push(c); });
     var hasRecent = top.length > 0;
     // Se ne mancano, completiamo con i corsi con più materiali
     courses.slice().sort(function (a, b) { return b.file_count - a.file_count; }).forEach(function (c) {
@@ -353,8 +381,9 @@
       '</section>' +
       // corsi a tutta larghezza, sotto i caricamenti recenti
       '<div class="dash-stack">' +
-        '<section class="panel"><div class="panel-head"><h2>' + (hasRecent ? 'Aperti di recente' : 'Corsi in evidenza') + '</h2><a class="link" href="#/corsi">Tutti i corsi →</a></div>' +
-          (top.length ? '<div class="course-grid dash-courses">' + top.map(courseCard).join('') + '</div>'
+        '<section class="panel"><div class="panel-head"><h2>' + (favCourses.length ? 'I tuoi corsi' : hasRecent ? 'Aperti di recente' : 'Corsi in evidenza') + '</h2><a class="link" href="#/corsi">Tutti i corsi →</a></div>' +
+          (!favCourses.length ? '<p class="muted small dash-hint">' + icon('star') + 'Tocca la stellina su un corso per tenerlo sempre qui in cima.</p>' : '') +
+          (top.length ? '<div class="course-grid dash-courses">' + top.map(courseTile).join('') + '</div>'
             : empty('book', 'Non ci sono ancora corsi.', '<a class="btn btn-primary" href="#/nuovo-corso">' + icon('plus') + 'Crea il primo corso</a>')) +
         '</section>' +
         '<section class="panel"><div class="panel-head"><h2>Caricati di recente</h2><a class="link" href="#/cerca">Cerca →</a></div>' +
@@ -495,20 +524,41 @@
     loading('courses');
     var kind = KINDS[params.get('tipo')] ? params.get('tipo') : '';
     var q = params.get('q') || '';
+    var folder = params.get('cartella') || '';
+    var order = ORDERS[params.get('ordine')] ? params.get('ordine') : 'recenti';
     var res = await Promise.all([Api.getCourse(id), Api.listFiles({ courseId: id })]);
     var course = res[0], all = res[1];
     if (!course) return errorPage('Non trovato', 'Il corso richiesto non esiste.');
     rememberCourse(id);
-    var counts = {};
-    all.forEach(function (f) { counts[f.kind] = (counts[f.kind] || 0) + 1; });
+    currentCourseFiles = all;
+    var counts = {}, folders = {};
+    all.forEach(function (f) {
+      counts[f.kind] = (counts[f.kind] || 0) + 1;
+      var tf = topFolder(f) || '__none';
+      folders[tf] = (folders[tf] || 0) + 1;
+    });
     var ql = q.toLowerCase();
     var files = all.filter(function (f) {
       return (!kind || f.kind === kind) &&
-        (!ql || [f.title, f.description, f.original_name].some(function (v) { return (v || '').toLowerCase().indexOf(ql) >= 0; }));
-    });
+        (!folder || (folder === '__none' ? !f.folder : topFolder(f) === folder)) &&
+        (!ql || [f.title, f.description, f.original_name, f.folder].some(function (v) { return (v || '').toLowerCase().indexOf(ql) >= 0; }));
+    }).sort(ORDERS[order].sort);
+    var keep = { tipo: kind, q: q, cartella: folder, ordine: order === 'recenti' ? '' : order };
+    var link = function (change) { return '#/corso/' + id + qs(Object.assign({}, keep, change)); };
     var tab = function (k, label, n) {
-      return '<a href="#/corso/' + id + qs({ tipo: k, q: q }) + '" class="' + (kind === k ? 'active' : '') + '">' + label + ' <span>' + n + '</span></a>';
+      return '<a href="' + link({ tipo: k }) + '" class="' + (kind === k ? 'active' : '') + '">' + label + ' <span>' + n + '</span></a>';
     };
+    // cartelle (dal vecchio Drive o scelte da chi carica) come filtri cliccabili
+    var folderNames = Object.keys(folders).filter(function (k) { return k !== '__none'; }).sort(function (a, b) { return a.localeCompare(b); });
+    var folderBar = folderNames.length ? '<nav class="folder-chips" aria-label="Cartelle">' +
+      '<a href="' + link({ cartella: '' }) + '" class="' + (!folder ? 'active' : '') + '">' + icon('folder') + 'Tutte</a>' +
+      folderNames.map(function (n) { return '<a href="' + link({ cartella: n }) + '" class="' + (folder === n ? 'active' : '') + '">' + esc(n) + ' <span>' + folders[n] + '</span></a>'; }).join('') +
+      (folders.__none ? '<a href="' + link({ cartella: '__none' }) + '" class="' + (folder === '__none' ? 'active' : '') + '">Senza cartella <span>' + folders.__none + '</span></a>' : '') +
+      '</nav>' : '';
+    var sortSel = '<label class="sort-select">' + icon('sort') + '<select data-course-sort data-id="' + id + '" aria-label="Ordina">' +
+      Object.keys(ORDERS).map(function (k) { return '<option value="' + k + '"' + (k === order ? ' selected' : '') + '>' + ORDERS[k].label + '</option>'; }).join('') +
+      '</select></label>';
+    var allFolders = all.map(function (f) { return f.folder; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).sort();
     render('courses',
       '<a class="back-link" href="#/corsi' + (course.degree ? '?laurea=' + course.degree : (placementOf(course) ? '' : '?laurea=da-assegnare')) + '">' + icon('arrow-left') + 'Tutti i corsi</a>' +
       '<section class="course-hero cover-' + (course.color % 8) + '">' +
@@ -517,7 +567,7 @@
           '<h1>' + esc(course.name) + '</h1><p>' + (course.teacher ? 'Docente: Prof. ' + esc(course.teacher) : 'Docente non indicato') + '</p>' +
           (course.description ? '<p class="course-desc">' + esc(course.description) + '</p>' : '') + '</div>' +
         '<div class="course-hero-side"><div class="hero-count"><strong>' + all.length + '</strong><small>materiali</small></div>' +
-          '<div class="hero-admin"><a class="btn btn-light btn-sm" href="#upload" data-action="scroll-upload">' + icon('upload') + 'Carica</a>' +
+          '<div class="hero-admin">' + favButton(id, 'fav-hero') + '<a class="btn btn-light btn-sm" href="#upload" data-action="scroll-upload">' + icon('upload') + 'Carica</a>' +
           (isAdmin() ? '<a class="btn btn-light btn-sm" href="#/modifica-corso/' + id + '">' + icon('edit') + 'Modifica</a>' +
             '<button class="btn btn-light btn-sm danger" type="button" data-action="delete-course" data-id="' + id + '" data-name="' + esc(course.name) + '" data-count="' + all.length + '">' + icon('trash') + 'Elimina</button>' : '') +
           '</div></div>' +
@@ -526,16 +576,17 @@
         '<section class="panel"><div class="panel-head wrap"><nav class="tabs" aria-label="Filtra per tipo">' +
           tab('', 'Tutti', all.length) +
           Object.keys(KINDS).filter(function (k) { return counts[k]; }).map(function (k) { return tab(k, KINDS[k].plural, counts[k]); }).join('') +
-          '</nav><form class="inline-search" data-form="filter-course" data-id="' + id + '" data-kind="' + kind + '">' + icon('search') +
-          '<input type="search" name="q" value="' + esc(q) + '" placeholder="Cerca nel corso"></form></div>' +
-          (files.length ? fileList(files, false) : empty('folder', q || kind ? 'Nessun materiale corrisponde ai filtri.' : 'Questo corso non ha ancora materiali. Sii il primo a contribuire!')) +
+          '</nav><div class="course-tools">' + sortSel + '<form class="inline-search" data-form="filter-course" data-id="' + id + '" data-kind="' + kind + '" data-folder="' + esc(folder) + '" data-order="' + keep.ordine + '">' + icon('search') +
+          '<input type="search" name="q" value="' + esc(q) + '" placeholder="Cerca nel corso"></form></div></div>' + folderBar +
+          (files.length ? fileList(files, false) : empty('folder', q || kind || folder ? 'Nessun materiale corrisponde ai filtri.' : 'Questo corso non ha ancora materiali. Sii il primo a contribuire!')) +
         '</section>' +
-        uploadPanel(id) +
+        uploadPanel(id, allFolders, folder !== '__none' ? folder : '') +
       '</div>', course.name);
     loadThumbs();
   }
 
-  function uploadPanel(courseId) {
+  function uploadPanel(courseId, folders, preset) {
+    folders = folders || [];
     return '<aside class="panel upload-panel" id="upload"><h2>' + icon('upload') + 'Carica materiale</h2>' +
       '<p class="muted small">PDF, immagini, audio, video e documenti. Max ' + CFG.maxUploadMb + ' MB per file.</p>' +
       '<form class="upload-form" data-form="upload" data-id="' + courseId + '">' +
@@ -544,6 +595,8 @@
         '<ul class="selected-files" data-selected></ul>' +
         '<label>Titolo <small class="muted">(se carichi un solo file)</small><input type="text" name="title" maxlength="200" placeholder="Es. Lezione 3 – Equilibrio chimico"></label>' +
         '<label>Descrizione <small class="muted">(facoltativa)</small><textarea name="description" rows="3" maxlength="2000" placeholder="Argomenti trattati, data della lezione…"></textarea></label>' +
+        '<label>Cartella <small class="muted">(facoltativa)</small><input type="text" name="folder" maxlength="120" list="folders-' + courseId + '" value="' + esc(preset || '') + '" placeholder="Es. Esercizi, Temi d\'esame, Registrazioni">' +
+          '<datalist id="folders-' + courseId + '">' + folders.map(function (f) { return '<option value="' + esc(f) + '">'; }).join('') + '</datalist></label>' +
         '<div class="progress" data-progress hidden><div class="progress-bar" data-progress-bar></div><span data-progress-label></span></div>' +
         '<button class="btn btn-primary btn-block" type="submit">' + icon('upload') + 'Carica</button>' +
         '<p class="muted small center">I file caricati sono visibili a tutti gli studenti. Solo gli amministratori possono rimuoverli.</p>' +
@@ -559,6 +612,8 @@
     var k = KINDS[f.kind] || KINDS.other;
     var inline = ['pdf', 'image', 'audio', 'video'].indexOf(f.kind) >= 0;
     var url = inline ? await Api.fileUrl(f, false, true) : '';
+    var mine = f.uploaded_by === state.user.id;
+    var voted = mine ? false : (await Api.myVotes([f.id]).catch(function () { return []; })).indexOf(f.id) >= 0;
     var viewer;
     if (f.kind === 'pdf') viewer = '<iframe src="' + esc(url) + '" title="' + esc(f.title) + '"></iframe>';
     else if (f.kind === 'image') viewer = '<a href="' + esc(url) + '" target="_blank" rel="noopener"><img src="' + esc(url) + '" alt="' + esc(f.title) + '"></a>';
@@ -574,6 +629,8 @@
           '<h1>' + esc(f.title) + '</h1>' + (f.description ? '<p class="file-desc">' + esc(f.description) + '</p>' : '') +
           '<dl class="details">' +
             '<dt>Corso</dt><dd><a href="#/corso/' + f.course_id + '">' + esc(f.course ? f.course.name : '') + '</a></dd>' +
+            '<dt>Cartella</dt><dd>' + (f.folder ? '<a href="#/corso/' + f.course_id + '?cartella=' + encodeURIComponent(topFolder(f)) + '">' + esc(f.folder) + '</a>' : '<span class="muted">nessuna</span>') +
+              (mine || isAdmin() ? ' <button class="link-btn" type="button" data-action="set-folder" data-id="' + f.id + '" data-folder="' + esc(f.folder || '') + '">cambia</button>' : '') + '</dd>' +
             '<dt>Nome file</dt><dd class="break">' + esc(f.original_name) + '</dd>' +
             '<dt>Dimensione</dt><dd>' + bytes(f.size) + '</dd>' +
             '<dt>Caricato da</dt><dd>' + authorLink(f) + (!f.uploader && f.author_name ? ' <span class="muted small">(dal vecchio Drive, non ancora iscritto)</span>' : '') + '</dd>' +
@@ -582,6 +639,8 @@
           '</dl>' +
           (f.pinned ? '<p class="pin-note">' + icon('shield') + 'Protetto: non verrà mai eliminato in automatico.</p>' : '') +
           '<div class="stack">' +
+            '<button class="btn btn-block vote-btn' + (voted ? ' on' : '') + '" type="button" data-action="vote" data-id="' + f.id + '"' + (mine ? ' disabled title="Non puoi votare i tuoi file"' : '') + '>' +
+              icon('thumb') + '<span>' + (voted ? 'Ti è stato utile' : 'Utile') + '</span><strong data-vote-count>' + (f.vote_count || 0) + '</strong></button>' +
             '<button class="btn btn-primary btn-block" type="button" data-action="download" data-id="' + f.id + '">' + icon('download') + 'Scarica</button>' +
             (inline ? '<a class="btn btn-ghost btn-block" href="' + esc(url) + '" target="_blank" rel="noopener">Apri a schermo intero</a>' : '') +
             (f.uploaded_by !== state.user.id ? '<button class="btn btn-ghost btn-block btn-report" type="button" data-action="report" data-id="' + f.id + '">' + icon('flag') + 'Segnala contenuto inappropriato</button>' : '') +
@@ -673,8 +732,8 @@
     loading('admin');
     var res = await Promise.all([Api.stats(), Api.listUsers(), Api.listAudit(), Api.usage().catch(function () { return null; }),
       Api.evictionPreview('b2').catch(function () { return []; }), Api.listReports().catch(function () { return []; }),
-      Api.importStatus().catch(function () { return null; })]);
-    var stats = res[0], audit = res[2], usage = res[3], preview = res[4], reports = res[5], imp = res[6];
+      Api.importStatus().catch(function () { return null; }), Api.adminStats().catch(function () { return null; })]);
+    var stats = res[0], audit = res[2], usage = res[3], preview = res[4], reports = res[5], imp = res[6], astats = res[7];
     var previewR2 = usage && usage.r2 ? await Api.evictionPreview('r2').catch(function () { return []; }) : [];
     var q = (params.get('q') || '').toLowerCase();
     var users = res[1].filter(function (u) { return !q || (u.name + ' ' + u.email).toLowerCase().indexOf(q) >= 0; })
@@ -686,6 +745,7 @@
       '<section class="stats">' + stat('users', stats.users, 'Utenti') + stat('book', stats.courses, 'Corsi') +
         stat('folder', stats.files, 'Materiali') + stat('archive', bytes(stats.bytes), 'Spazio usato (totale)') + '</section>' +
       reportsPanel(reports) +
+      (astats ? statsPanel(astats) : '') +
       (usage ? usagePanel(usage, preview, stats, previewR2) : '') +
       (imp ? importPanel(imp) : '') +
       '<section class="panel"><div class="panel-head wrap"><h2>Utenti e ruoli</h2>' +
@@ -719,6 +779,25 @@
             '<time class="muted small">' + dateTime(a.created_at) + '</time></li>';
         }).join('') : '<li class="muted">Nessuna attività registrata.</li>') +
       '</ul></section>', 'Amministrazione');
+  }
+
+  // Statistiche d'uso (ultimi 7 giorni, file più aperti, corsi più usati nell'ultimo mese)
+  function statsPanel(st) {
+    var n = function (v) { return Number(v) || 0; };
+    return '<section class="panel"><div class="panel-head"><h2>' + icon('trophy') + 'Statistiche</h2><span class="muted small">ultimi 7 giorni</span></div>' +
+      '<ul class="import-stats">' +
+        '<li><strong>' + n(st.active_7d) + '</strong><small>studenti attivi</small></li>' +
+        '<li><strong>' + n(st.opens_7d) + '</strong><small>aperture di file</small></li>' +
+        '<li><strong>' + n(st.uploads_7d) + '</strong><small>file caricati</small></li>' +
+        '<li><strong>' + n(st.new_users_7d) + '</strong><small>nuovi iscritti</small></li>' +
+      '</ul><div class="two-col stats-lists">' +
+        '<div><h3 class="usage-sub">File più aperti</h3><ol class="evict-list">' + (st.top_files || []).map(function (f) {
+          return '<li><a href="#/file/' + f.id + '">' + esc(f.title) + '</a><span class="muted small">' + esc(f.course) + ' · ' + n(f.open_count) + ' aperture' + (f.vote_count ? ' · ' + f.vote_count + ' 👍' : '') + '</span></li>';
+        }).join('') + '</ol></div>' +
+        '<div><h3 class="usage-sub">Corsi più usati (30 giorni)</h3><ol class="evict-list">' + ((st.top_courses || []).length ? st.top_courses.map(function (c) {
+          return '<li><a href="#/corso/' + c.id + '">' + esc(c.name) + '</a><span class="muted small">' + (c.year ? esc(c.year) + ' · ' : '') + n(c.opens) + ' aperture</span></li>';
+        }).join('') : '<li class="muted">Ancora nessuna apertura.</li>') + '</ol></div>' +
+      '</div></section>';
   }
 
   function reportsPanel(reports) {
@@ -1185,6 +1264,42 @@
         return;
       }
       case 'start-tour': startTour(); return;
+      case 'install-app': installApp(); return;
+      case 'toggle-fav': {
+        var cid = Number(id), on = !isFav(cid);
+        el.disabled = true;
+        try {
+          await Api.setFavorite(cid, on);
+          state.favs = on ? state.favs.concat([cid]) : state.favs.filter(function (x) { return x !== cid; });
+          document.querySelectorAll('.fav-btn[data-id="' + cid + '"]').forEach(function (b) {
+            b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+            b.title = on ? 'Togli dai preferiti' : 'Aggiungi ai preferiti';
+            b.classList.remove('pop'); void b.offsetWidth; if (on) b.classList.add('pop');
+          });
+          toast(on ? '⭐ Aggiunto ai tuoi corsi: lo trovi in cima alla dashboard.' : 'Tolto dai preferiti.');
+        } catch (err) { fail(err); }
+        el.disabled = false;
+        return;
+      }
+      case 'vote': {
+        el.disabled = true;
+        try {
+          var v = await Api.toggleVote(Number(id));
+          el.classList.toggle('on', v.voted);
+          el.querySelector('span').textContent = v.voted ? 'Ti è stato utile' : 'Utile';
+          el.querySelector('[data-vote-count]').textContent = v.count;
+          if (fileCache[id]) fileCache[id].vote_count = v.count;
+          if (v.voted) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+        } catch (err) { fail(err); }
+        el.disabled = false;
+        return;
+      }
+      case 'set-folder': {
+        var nf = prompt('Cartella del file (lascia vuoto per nessuna):', el.getAttribute('data-folder') || '');
+        if (nf === null) return;
+        try { await Api.setFolder(Number(id), nf); toast('Cartella aggiornata.'); route(); } catch (err) { fail(err); }
+        return;
+      }
       case 'go-back': {
         if (history.length > 1) history.back(); else go('#/');
         return;
@@ -1324,7 +1439,7 @@
       case 'filter-courses': return go('#/corsi' + qs({ q: data.q }));
       case 'filter-users': return go('#/admin' + qs({ q: data.q }));
       case 'filter-course':
-        return go('#/corso/' + form.getAttribute('data-id') + qs({ tipo: form.getAttribute('data-kind'), q: data.q }));
+        return go('#/corso/' + form.getAttribute('data-id') + qs({ tipo: form.getAttribute('data-kind'), q: data.q, cartella: form.getAttribute('data-folder'), ordine: form.getAttribute('data-order') }));
       case 'course': {
         var id = Number(form.getAttribute('data-id')) || null;
         if (!String(data.name || '').trim()) return toast('Il nome del corso è obbligatorio.', 'error');
@@ -1358,6 +1473,16 @@
     if (big.length) return toast('Supera il limite di ' + CFG.maxUploadMb + ' MB: ' + big.map(function (f) { return f.name; }).join(', '), 'error');
 
     var courseId = Number(form.getAttribute('data-id'));
+    // avviso doppioni: stesso nome e stessa dimensione di un file già nel corso
+    var dup = files.filter(function (f) {
+      return currentCourseFiles.some(function (x) { return x.original_name === f.name && Number(x.size) === f.size; });
+    });
+    if (dup.length && !confirm((dup.length === 1 ? '«' + dup[0].name + '» è già presente' : dup.length + ' file sono già presenti') +
+        ' in questo corso (stesso nome e dimensione).\n\nCaricare lo stesso? Premi Annulla per saltare ' + (dup.length === 1 ? 'il doppione.' : 'i doppioni.'))) {
+      files = files.filter(function (f) { return dup.indexOf(f) < 0; });
+      if (!files.length) return toast('Nessun file caricato: erano tutti già presenti.', 'info');
+    }
+    var folder = form.folder ? form.folder.value : '';
     var title = files.length === 1 ? form.title.value : '';
     var description = form.description.value;
     var btn = form.querySelector('button[type=submit]');
@@ -1373,7 +1498,7 @@
         var prefix = files.length > 1 ? 'File ' + (i + 1) + ' di ' + files.length + ' · ' : '';
         label.textContent = prefix + '0%';
         bar.style.width = Math.round((i / files.length) * 100) + '%';
-        var result = await Api.uploadFile(courseId, files[i], { title: title, description: description }, function (p) {
+        var result = await Api.uploadFile(courseId, files[i], { title: title, description: description, folder: folder }, function (p) {
           bar.style.width = Math.round(((i + p) / files.length) * 100) + '%';
           label.textContent = prefix + (p < 1 ? Math.round(p * 100) + '%' : 'Salvataggio…');
         });
@@ -1426,6 +1551,12 @@
   });
   document.addEventListener('change', function (e) {
     if (e.target.matches('[data-file-input]')) showSelected(e.target);
+    if (e.target.matches('select[data-course-sort]')) {
+      var hp = parseHash().params;
+      hp.set('ordine', e.target.value === 'recenti' ? '' : e.target.value);
+      var obj = {}; hp.forEach(function (v, k) { obj[k] = v; });
+      go('#/corso/' + e.target.getAttribute('data-id') + qs(obj));
+    }
     if (e.target.matches('select[data-aa-select]')) {
       var sel = e.target;
       var p = { laurea: sel.getAttribute('data-view'), anno: Number(sel.getAttribute('data-anno')) ? sel.getAttribute('data-anno') : '', aa: sel.value.replace('/', '-') };
@@ -1465,11 +1596,61 @@
     route();
   });
 
+  // App sul telefono: Android/Chrome propone l'installazione; su iPhone/iPad si usa "Aggiungi alla schermata Home"
+  var installPrompt = null;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installPrompt = e; });
+  function isStandalone() {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  }
+  function infoModal(title, html) {
+    closeModal();
+    var wrap = document.createElement('div');
+    wrap.className = 'modal-backdrop';
+    wrap.innerHTML = '<div class="modal panel" role="dialog" aria-modal="true"><h2>' + esc(title) + '</h2>' + html +
+      '<div class="form-actions"><button class="btn btn-primary" type="button" data-action="close-modal">Ho capito</button></div></div>';
+    document.body.appendChild(wrap);
+  }
+  async function installApp() {
+    if (installPrompt) {
+      installPrompt.prompt();
+      var choice = await installPrompt.userChoice.catch(function () { return null; });
+      installPrompt = null;
+      if (choice && choice.outcome === 'accepted') toast('App installata: la trovi tra le app del telefono.');
+      return;
+    }
+    var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    infoModal('Installa l\'app', ios
+      ? '<ol class="install-steps"><li>Apri il sito con <strong>Safari</strong>.</li><li>Tocca il pulsante <strong>Condividi</strong> (il quadrato con la freccia in su).</li>' +
+        '<li>Scegli <strong>Aggiungi alla schermata Home</strong> e poi <strong>Aggiungi</strong>.</li></ol>' +
+        '<p class="muted small">L\'icona compare tra le tue app: si apre a schermo intero, come un\'app vera. La prima volta accedi di nuovo con l\'account @' + esc(CFG.allowedDomain) + '.</p>'
+      : '<ol class="install-steps"><li>Apri il sito con <strong>Chrome</strong>.</li><li>Tocca il menu <strong>⋮</strong> in alto a destra.</li>' +
+        '<li>Scegli <strong>Installa app</strong> (oppure <strong>Aggiungi a schermata Home</strong>).</li></ol>' +
+        '<p class="muted small">L\'icona compare tra le tue app e si apre a schermo intero.</p>');
+  }
+
   // Tour di benvenuto al primo accesso dell'account
   function startTour() {
     if (!window.Tour || window.Tour.running() || !state.user) return;
     window.Tour.start({ name: state.user.name, onDone: function () { Api.tourDone(); } });
   }
+  // Dati personali: ultima visita (badge "Nuovo") e corsi preferiti
+  async function loadPersonal() {
+    var since = await Api.visit().catch(function () { return null; });
+    if (!since) { // database non aggiornato: ricordo l'ultima visita su questo dispositivo
+      try {
+        var key = 'last-visit:' + state.user.id, raw = JSON.parse(localStorage.getItem(key) || 'null');
+        var now = new Date().toISOString();
+        if (!raw || Date.now() - Date.parse(raw.seen) > 3600000) raw = { prev: raw ? raw.seen : now, seen: now }; else raw.seen = now;
+        localStorage.setItem(key, JSON.stringify(raw));
+        since = raw.prev;
+      } catch (e) { since = null; }
+    }
+    state.since = since;
+    var r = await Promise.all([Api.listFavorites().catch(function () { return []; }), Api.newCounts(since).catch(function () { return {}; })]);
+    state.favs = r[0].map(Number);
+    state.newCounts = r[1];
+  }
+
   function maybeTour() {
     Api.tourPending().then(function (pending) { if (pending) setTimeout(startTour, 700); }, function () {});
   }
@@ -1478,7 +1659,7 @@
   Api.init().then(function (res) {
     if (res && res.user) {
       state.user = res.user;
-      return route().then(maybeTour);
+      return loadPersonal().catch(function () {}).then(route).then(maybeTour);
     }
     if (res && res.error === 'domain') {
       return loginPage('L\'account ' + (res.email || '') + ' non è un account @' + CFG.allowedDomain + '. Esci da Google e accedi con l\'account universitario.');

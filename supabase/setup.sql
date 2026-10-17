@@ -82,6 +82,31 @@ alter table public.files add column if not exists imported_at timestamptz; -- da
 alter table public.files add column if not exists needs_processing boolean not null default false; -- da comprimere (robot)
 alter table public.files add column if not exists processing_error text;
 alter table public.files add column if not exists author_name text;        -- nome dell'autore sul Drive (finché non si iscrive)
+alter table public.files add column if not exists folder text;             -- cartella dentro il corso (es. "Esercizi")
+alter table public.files add column if not exists vote_count integer not null default 0;  -- voti "Utile 👍"
+do $$ begin
+  alter table public.files add constraint files_folder_len check (char_length(folder) <= 120);
+exception when duplicate_object then null;
+end $$;
+-- Cartelle dei file importati: ricavate dalla descrizione ("… · Cartella: Esercizi")
+update public.files set folder = left(trim(substring(description from 'Cartella: (.+)$')), 120)
+where folder is null and description like '%Cartella: %';
+
+-- Corsi preferiti ⭐ di ciascuno studente
+create table if not exists public.course_favorites (
+  user_id    uuid not null references public.profiles(id) on delete cascade default auth.uid(),
+  course_id  bigint not null references public.courses(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, course_id)
+);
+
+-- Voti "Utile 👍" (uno per studente e file)
+create table if not exists public.file_votes (
+  file_id    bigint not null references public.files(id) on delete cascade,
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (file_id, user_id)
+);
 create unique index if not exists files_drive_id_idx on public.files(drive_id);
 create index if not exists files_processing_idx on public.files(id) where needs_processing;
 
@@ -139,7 +164,8 @@ insert into public.app_settings (key, value) values
   ('import_max_mb', '3000'),           -- dimensione massima di un file importato (gli ZIP vengono poi scompattati)
   ('points_per_view', '5'),            -- a chi ha caricato, quando un altro studente apre il file (una volta per persona)
   ('points_per_read', '1'),            -- a chi apre un file per la prima volta…
-  ('read_points_daily_cap', '5')       -- …fino a questo massimo al giorno
+  ('read_points_daily_cap', '5'),      -- …fino a questo massimo al giorno
+  ('points_per_vote', '3')             -- a chi ha caricato, per ogni voto "Utile 👍" ricevuto
 on conflict (key) do nothing;
 -- Aggiornamento: nessun tetto ai punti dei file importati (prima 300)
 update public.app_settings set value = '0' where key = 'import_points_cap' and value = '300';
@@ -156,6 +182,9 @@ alter table public.profiles add column if not exists banned_reason text;
 alter table public.profiles add column if not exists banned_by uuid references public.profiles(id) on delete set null;
 -- Tour di benvenuto: mostrato una volta per account, al primo accesso (anche cambiando dispositivo)
 alter table public.profiles add column if not exists onboarded_at timestamptz;
+-- Ultima visita (per i badge "Nuovo"): seen_at = ora, prev_seen_at = visita precedente
+alter table public.profiles add column if not exists seen_at timestamptz;
+alter table public.profiles add column if not exists prev_seen_at timestamptz;
 
 -- Pagina "Rappresentanti": contatti e link utili, modificabili dagli admin.
 -- I contatti personali NON sono nel codice pubblico: stanno solo qui, visibili agli studenti loggati.
@@ -297,6 +326,11 @@ begin
     new.needs_processing := new.storage = 'r2' and new.kind in ('audio', 'video');
     new.processing_error := null;
     new.author_name := null;
+    -- statistiche gestite solo dal sito, non impostabili da chi carica
+    new.open_count := 0;
+    new.vote_count := 0;
+    new.last_opened_at := null;
+    new.pinned := false;
   end if;
   return new;
 end $$;
@@ -644,6 +678,83 @@ returns void language sql volatile security definer set search_path = public as 
   update profiles set onboarded_at = coalesce(onboarded_at, now()) where id = auth.uid() and public.is_campus()
 $$;
 
+-- Ultima visita: restituisce la visita precedente (i file più recenti sono "Nuovi").
+-- Dentro la stessa sessione (meno di un'ora tra un'apertura e l'altra) il riferimento non cambia.
+create or replace function public.visit()
+returns timestamptz language plpgsql volatile security definer set search_path = public as $$
+declare v_seen timestamptz; v_prev timestamptz; v_created timestamptz;
+begin
+  if not public.is_campus() then return null; end if;
+  select seen_at, prev_seen_at, created_at into v_seen, v_prev, v_created from profiles where id = auth.uid();
+  if v_seen is null or v_seen < now() - interval '1 hour' then
+    v_prev := coalesce(v_seen, v_created, now());
+    update profiles set prev_seen_at = v_prev, seen_at = now() where id = auth.uid();
+  else
+    update profiles set seen_at = now() where id = auth.uid();
+  end if;
+  return v_prev;
+end $$;
+
+-- Voto "Utile 👍": aggiunge o toglie il proprio voto; +3/−3 punti a chi ha caricato
+create or replace function public.toggle_vote(fid bigint)
+returns json language plpgsql volatile security definer set search_path = public as $$
+declare v_owner uuid; v_pts int := public.setting_int('points_per_vote', 3); v_voted boolean; v_email text; v_count int;
+begin
+  if not public.is_campus() then raise exception 'Accesso negato'; end if;
+  select uploaded_by into v_owner from files where id = fid;
+  if not found then raise exception 'File non trovato'; end if;
+  if v_owner = auth.uid() then raise exception 'Non puoi votare i tuoi file'; end if;
+  delete from file_votes where file_id = fid and user_id = auth.uid();
+  if found then v_voted := false; v_pts := -v_pts;
+  else insert into file_votes (file_id, user_id) values (fid, auth.uid()); v_voted := true;
+  end if;
+  update files set vote_count = greatest(0, vote_count + case when v_voted then 1 else -1 end) where id = fid returning vote_count into v_count;
+  if v_owner is not null then
+    update profiles set points = greatest(0, points + v_pts) where id = v_owner;
+  else
+    select email into v_email from import_pending where file_id = fid;
+    if v_email is not null then update import_credits set view_points = greatest(0, view_points + v_pts) where email = v_email; end if;
+  end if;
+  return json_build_object('voted', v_voted, 'count', v_count);
+end $$;
+
+-- Quali di questi file ho votato
+create or replace function public.my_votes(ids bigint[])
+returns setof bigint language sql stable security definer set search_path = public as $$
+  select file_id from file_votes where user_id = auth.uid() and file_id = any(ids) and public.is_campus()
+$$;
+
+-- Cartella di un file: chi l'ha caricato o un amministratore
+create or replace function public.set_folder(fid bigint, name text)
+returns void language plpgsql volatile security definer set search_path = public as $$
+begin
+  if not public.is_campus() then raise exception 'Accesso negato'; end if;
+  update files set folder = left(nullif(trim(name), ''), 120)
+  where id = fid and (uploaded_by = auth.uid() or public.is_admin());
+  if not found then raise exception 'Solo chi ha caricato il file o un amministratore può cambiarne la cartella'; end if;
+end $$;
+
+-- Statistiche per la pagina Amministrazione
+create or replace function public.admin_stats()
+returns json language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'Operazione riservata agli amministratori'; end if;
+  return json_build_object(
+    'active_7d', (select count(distinct user_id) from (
+        select user_id from file_opens where day > current_date - 7
+        union select uploaded_by from files where created_at > now() - interval '7 days' and imported_at is null) a where user_id is not null),
+    'opens_7d', (select count(*) from file_opens where day > current_date - 7),
+    'uploads_7d', (select count(*) from files where created_at > now() - interval '7 days' and imported_at is null),
+    'new_users_7d', (select count(*) from profiles where created_at > now() - interval '7 days'),
+    'top_files', (select coalesce(json_agg(t), '[]'::json) from (
+        select f.id, f.title, f.open_count, f.vote_count, c.name as course from files f join courses c on c.id = f.course_id
+        order by f.open_count desc, f.vote_count desc, f.id limit 8) t),
+    'top_courses', (select coalesce(json_agg(t), '[]'::json) from (
+        select c.id, c.name, c.year, count(o.*) as opens from courses c join files f on f.course_id = c.id
+        join file_opens o on o.file_id = f.id and o.day > current_date - 30
+        group by c.id order by opens desc limit 8) t));
+end $$;
+
 -- Classifica: solo utenti attivi, senza dati riservati
 create or replace function public.leaderboard()
 returns table(user_id uuid, name text, points integer, upload_count integer, role text, rank_pos bigint)
@@ -808,12 +919,13 @@ begin
   if v_email is not null then select id into v_user from profiles where email = v_email; end if;
   perform set_config('app.importing', '1', true);
   insert into files (course_id, title, description, original_name, storage_path, storage, storage_version,
-                     mime, kind, size, uploaded_by, created_at, imported_at, drive_id, needs_processing)
+                     mime, kind, size, uploaded_by, created_at, imported_at, drive_id, needs_processing, folder)
   values (v_course, left(coalesce(nullif(p ->> 'title', ''), p ->> 'name'), 200), left(nullif(p ->> 'description', ''), 2000),
           left(p ->> 'name', 255), p ->> 'path', p ->> 'store', nullif(p ->> 'version', ''),
           p ->> 'mime', p ->> 'kind', (p ->> 'size')::bigint, v_user,
           coalesce((p ->> 'created')::timestamptz, now()), now(), p ->> 'drive_id',
-          coalesce((p ->> 'needs_processing')::boolean, false))
+          coalesce((p ->> 'needs_processing')::boolean, false),
+          left(nullif(trim(coalesce(p ->> 'folder', substring(p ->> 'description' from 'Cartella: (.+)$'))), ''), 120))
   returning id into v_id;
   perform set_config('app.importing', '', true);
 
@@ -894,7 +1006,7 @@ begin
           left(p ->> 'name', 255), p ->> 'path', f.storage, nullif(p ->> 'version', ''),
           p ->> 'mime', p ->> 'kind', (p ->> 'size')::bigint, f.uploaded_by, f.created_at, f.imported_at, v_drive, false)
   returning id into v_id;
-  update files set author_name = f.author_name where id = v_id;
+  update files set author_name = f.author_name, folder = f.folder where id = v_id;
   insert into import_pending (file_id, email) select v_id, email from import_pending where file_id = parent_id;
   perform set_config('app.importing', '', true);
   perform set_config('app.robot', '', true);
@@ -969,12 +1081,19 @@ alter table public.file_opens enable row level security;
 alter table public.course_visits enable row level security;
 alter table public.import_pending enable row level security;
 alter table public.import_credits enable row level security;
+alter table public.course_favorites enable row level security;
+alter table public.file_votes enable row level security;
 alter table public.app_settings enable row level security;
 alter table public.reports enable row level security;
 alter table public.representatives enable row level security;
 alter table public.info_links enable row level security;
 alter table public.professors enable row level security;
-revoke all on public.file_opens, public.app_settings, public.course_visits, public.import_pending, public.import_credits from anon, authenticated;
+revoke all on public.file_opens, public.app_settings, public.course_visits, public.import_pending, public.import_credits, public.file_votes from anon, authenticated;
+revoke all on public.course_favorites from anon;
+grant select, insert, delete on public.course_favorites to authenticated;
+drop policy if exists "preferiti: solo i propri" on public.course_favorites;
+create policy "preferiti: solo i propri" on public.course_favorites
+  for all to authenticated using (public.is_campus() and user_id = auth.uid()) with check (public.is_campus() and user_id = auth.uid());
 
 drop policy if exists "profili visibili agli studenti" on public.profiles;
 create policy "profili visibili agli studenti" on public.profiles

@@ -278,11 +278,12 @@
             action: 'confirm', key: up.key, name: file.name, courseId: courseId, store: up.store,
             title: clean(meta.title, 200), description: clean(meta.description, 2000),
           });
+          if (meta.folder) await this.setFolder(done.id, meta.folder).catch(function () {});
           return { id: done.id, evicted: up.evicted || [] };
         }
         var path = me.id + '/' + uuid() + '.' + t.ext;
         check(await sb.storage.from(BUCKET).upload(path, file, { contentType: t.mime, upsert: false, cacheControl: '3600' }));
-        return { evicted: [], id: check(await sb.from('files').insert({
+        var newId = { evicted: [], id: check(await sb.from('files').insert({
           course_id: courseId,
           title: clean(meta.title, 200) || baseName(file.name),
           description: clean(meta.description, 2000) || null,
@@ -292,6 +293,8 @@
           kind: t.kind,
           size: file.size,
         }).select('id').single()).id };
+        if (meta.folder) await this.setFolder(newId.id, meta.folder).catch(function () {});
+        return newId;
       },
 
       async fileUrl(file, download, count) {
@@ -401,6 +404,42 @@
 
       async storageCheck() { return b2({ action: 'storage-check' }); },
 
+      // Ultima visita: i file caricati dopo questa data sono "Nuovi" (null se il database non è aggiornato)
+      async visit() {
+        var res = await sb.rpc('visit');
+        return res.error ? null : res.data;
+      },
+      // Numero di file nuovi per corso (escludendo i miei)
+      async newCounts(since) {
+        if (!since || !me) return {};
+        var res = await sb.from('files').select('course_id').gt('created_at', since)
+          .or('uploaded_by.is.null,uploaded_by.neq.' + me.id).limit(2000);
+        var out = {};
+        (res.data || []).forEach(function (r) { out[r.course_id] = (out[r.course_id] || 0) + 1; });
+        return out;
+      },
+      // Corsi preferiti ⭐
+      async listFavorites() {
+        var res = await sb.from('course_favorites').select('course_id').order('created_at');
+        return res.error ? [] : res.data.map(function (r) { return r.course_id; });
+      },
+      async setFavorite(courseId, on) {
+        if (on) check(await sb.from('course_favorites').insert({ course_id: courseId }));
+        else check(await sb.from('course_favorites').delete().eq('course_id', courseId));
+      },
+      // Voti "Utile 👍"
+      async toggleVote(fileId) { return check(await sb.rpc('toggle_vote', { fid: fileId })); },
+      async myVotes(ids) {
+        if (!ids.length) return [];
+        var res = await sb.rpc('my_votes', { ids: ids });
+        return res.error ? [] : (res.data || []).map(function (r) { return Number(typeof r === 'object' ? r.my_votes : r); });
+      },
+      async setFolder(fileId, name) { check(await sb.rpc('set_folder', { fid: fileId, name: clean(name, 120) })); },
+      async adminStats() {
+        var res = await sb.rpc('admin_stats');
+        return res.error ? null : res.data;
+      },
+
       // Tour di benvenuto: true se l'account non l'ha ancora visto (null se il database non è aggiornato)
       async tourPending() {
         var res = await sb.rpc('tour_pending');
@@ -498,6 +537,8 @@
         img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
       });
     }
+    var favorites = [];
+    var votes = {};
     function addFile(courseId, name, blob, title, uploader, minsAgo, description) {
       var t = typeFor(name);
       var id = ++seq;
@@ -525,6 +566,8 @@
       addFile(2, 'Benzene.png', await imgBlob(), 'Schema anello benzenico', 'u-3', 600);
       addFile(2, 'Appunti stereochimica.pdf', pdfBlob('Appunti di stereochimica'), null, 'u-2', 120);
       addFile(3, 'Titolazioni acido-base.pdf', pdfBlob('Titolazioni acido-base'), null, 'u-3', 60);
+      // cartelle di esempio nel primo corso
+      files[0].folder = 'Lezioni'; files[1].folder = 'Esercizi'; files[2].folder = 'Registrazioni';
     })();
 
     return {
@@ -605,6 +648,7 @@
         if (onProgress) onProgress(0.5);
         await wait();
         var id = addFile(courseId, file.name, file, clean(meta.title, 200), me.id, 0, clean(meta.description, 2000));
+        if (meta.folder) files[files.length - 1].folder = clean(meta.folder, 120);
         log('file_caricato', file.name);
         return { id: id, evicted: [] };
       },
@@ -623,6 +667,35 @@
         try { return !localStorage.getItem('tour-done-' + (me && me.id)); } catch (e) { return false; }
       },
       tourDone() { try { localStorage.setItem('tour-done-' + (me && me.id), '1'); } catch (e) { /* ignora */ } },
+      async visit() { return iso(1500); },
+      async newCounts(since) {
+        var out = {};
+        files.forEach(function (f) { if (f.created_at > since && f.uploaded_by !== (me && me.id)) out[f.course_id] = (out[f.course_id] || 0) + 1; });
+        return out;
+      },
+      async listFavorites() { return favorites.slice(); },
+      async setFavorite(courseId, on) {
+        favorites = favorites.filter(function (x) { return x !== courseId; });
+        if (on) favorites.push(courseId);
+      },
+      async toggleVote(fileId) {
+        var f = files.find(function (x) { return x.id === fileId; });
+        if (f.uploaded_by === me.id) throw new Error('Non puoi votare i tuoi file');
+        var on = !votes[fileId];
+        votes[fileId] = on;
+        f.vote_count = Math.max(0, (f.vote_count || 0) + (on ? 1 : -1));
+        return { voted: on, count: f.vote_count };
+      },
+      async myVotes(ids) { return ids.filter(function (id) { return votes[id]; }); },
+      async setFolder(fileId, name) {
+        var f = files.find(function (x) { return x.id === fileId; });
+        if (f) f.folder = clean(name, 120) || null;
+      },
+      async adminStats() {
+        var top = files.slice(0, 5).map(function (f) { var c = courses.find(function (x) { return x.id === f.course_id; }); return { id: f.id, title: f.title, open_count: 3, vote_count: f.vote_count || 0, course: c ? c.name : '' }; });
+        return { active_7d: users.length, opens_7d: 12, uploads_7d: files.length, new_users_7d: 1, top_files: top,
+          top_courses: courses.slice(0, 4).map(function (c, i) { return { id: c.id, name: c.name, year: c.year, opens: 9 - i * 2 }; }) };
+      },
       async storageCheck() {
         return { origin: location.origin, results: [{ store: 'b2', ok: true, steps: [], message: 'Anteprima: nessun archivio reale da verificare.' }] };
       },

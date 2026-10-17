@@ -50,7 +50,10 @@ che apre il file, +1 a chi apre un file nuovo max 5/giorno (`file_opens.reader_p
 per gli autori Drive non iscritti `import_credits.view_points`); segnalazioni, sospensione utenti; file protetti 📌; pulizia
 automatica per archivio (documenti: aperture ultimi 548 giorni; registrazioni: 365; mai file < 14 giorni né
 importati da < 6 mesi); importazione Drive con punti (+10/file, nessun tetto, accreditati anche al primo accesso
-via `import_pending`/`import_credits`); formati extra .cif/.mryx; pagine Rappresentanti e
+via `import_pending`/`import_credits`); formati extra .cif/.mryx; badge "Nuovo" (`visit()`, profiles.seen_at/prev_seen_at); preferiti ⭐ (`course_favorites`);
+voti "Utile" (`file_votes`, `toggle_vote`, +3 punti); cartelle (`files.folder`, `set_folder`); ordinamento e avviso
+doppioni nel corso; statistiche admin (`admin_stats`); tour di benvenuto (`docs/js/tour.js`, profiles.onboarded_at);
+PWA (`docs/manifest.webmanifest`, icone in `docs/img/`); tema scuro (variabili CSS, `--mix`, `--brand`); pagine Rappresentanti e
 Professori (dati nel DB, modificabili dagli admin); firma "Fatto con ♥ da Aleksey Symonenko".
 Studenti: vedono tutto, caricano, creano corsi, segnalano. Admin: modificano/eliminano tutto,
 gestiscono ruoli, sospensioni, contenuti delle pagine. Il primo utente è diventato admin.
