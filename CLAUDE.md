@@ -53,7 +53,9 @@ importati da < 6 mesi); importazione Drive con punti (+10/file, nessun tetto, ac
 via `import_pending`/`import_credits`); formati extra .cif/.mryx; badge "Nuovo" (`visit()`, profiles.seen_at/prev_seen_at); preferiti ⭐ (`course_favorites`);
 voti "Utile" (`file_votes`, `toggle_vote`, +3 punti); cartelle (`files.folder`, `set_folder`); ordinamento e avviso
 doppioni nel corso; statistiche admin (`admin_stats`); tour di benvenuto (`docs/js/tour.js`, profiles.onboarded_at);
-PWA (`docs/manifest.webmanifest`, icone in `docs/img/`); tema scuro (variabili CSS, `--mix`, `--brand`); pagine Rappresentanti e
+PWA (`docs/manifest.webmanifest`, icone in `docs/img/`); tema scuro (variabili CSS, `--mix`, `--brand`) automatico o scelto col
+pulsante ☾/☀ (`docs/js/theme.js`, `html[data-theme]`, salvato in localStorage); versione telefono/tablet compatta (fine di `style.css`:
+nessun elemento più largo dello schermo, campi a 16px per evitare lo zoom di iOS, corsi su 2 colonne); pagine Rappresentanti e
 Professori (dati nel DB, modificabili dagli admin); firma "Fatto con ♥ da Aleksey Symonenko".
 Studenti: vedono tutto, caricano, creano corsi, segnalano. Admin: modificano/eliminano tutto,
 gestiscono ruoli, sospensioni, contenuti delle pagine. Il primo utente è diventato admin.

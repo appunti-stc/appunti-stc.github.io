@@ -294,6 +294,7 @@ a.user-link:hover strong, .podium-name:hover strong { color: var(--primary); tex
 .dense .file-thumb svg { width: 22px; height: 22px; }
 .file-body { min-width: 0; flex: 1; }
 .file-title { display: block; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-title:has(+ .badge-new) { display: inline-block; max-width: calc(100% - 66px); vertical-align: bottom; }
 .file-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .8rem; color: var(--muted); margin-top: 3px; }
 .meta-link { color: var(--ink-2); font-weight: 500; }
 .dot { opacity: .5; }
@@ -695,7 +696,9 @@ a.info-item > svg { position: absolute; right: 12px; top: 50%; transform: transl
 .nav-tree { display: none; }
 .nav-tree.open { display: flex; }
 .courses-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; margin-bottom: 20px; }
-.courses-toolbar .filter-bar { margin: 0; flex: 1 1 320px; }
+.courses-toolbar .filter-bar { margin: 0; flex: 1 1 320px; flex-wrap: nowrap; }
+.courses-toolbar .filter-bar .input-ic { flex: 1 1 auto; min-width: 0; }
+.courses-toolbar { align-items: center; }
 .aa-select { position: relative; display: flex; align-items: center; gap: 8px; padding: .6rem 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font-size: .86rem; font-weight: 600; color: var(--ink-2); cursor: pointer; transition: border-color .15s, background .15s; }
 .aa-select:hover { border-color: var(--primary); background: var(--primary-soft); }
 .aa-select:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
@@ -836,9 +839,9 @@ a.info-item > svg { position: absolute; right: 12px; top: 50%; transform: transl
 .dash-hint svg { width: 15px; height: 15px; color: var(--accent); fill: none; }
 .stats-lists { margin-top: 8px; }
 
-/* ---------- Tema scuro (automatico se il dispositivo è in modalità scura) ---------- */
+/* ---------- Tema scuro: automatico se il dispositivo è in modalità scura, oppure scelto col pulsante ---------- */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --primary: #c4405a;
     --brand: #7e1a2b;
@@ -859,9 +862,170 @@ a.info-item > svg { position: absolute; right: 12px; top: 50%; transform: transl
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 16px rgba(0, 0, 0, .3);
     --shadow-lg: 0 10px 40px rgba(0, 0, 0, .55);
   }
-  img, video { color-scheme: normal; }
-  .viewer iframe { background: #fff; }
-  .tour-card { box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
 }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --primary: #c4405a;
+  --brand: #7e1a2b;
+  --accent: #d8b45e;
+  --bg: #141014;
+  --surface: #1f191e;
+  --mix: #1f191e;
+  --hover: #262027;
+  --ink: #f2ecef;
+  --ink-2: #d3c9ce;
+  --muted: #a0969c;
+  --line: #3a3037;
+  --line-2: #2a2329;
+  --ok: #4cc38a;
+  --err: #ff7468;
+  --accent-ink: color-mix(in srgb, var(--accent) 75%, #fff);
+  --k-pdf: #ef6f61; --k-image: #4fc29a; --k-audio: #a98bf0; --k-video: #5ea8ea; --k-document: #7f9fd6; --k-other: #c9a46a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 16px rgba(0, 0, 0, .3);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, .55);
+}
+img, video { color-scheme: normal; }
+.viewer iframe { background: #fff; }
 
 .install-steps { padding-left: 1.2rem; margin: 6px 0 12px; display: grid; gap: 8px; }
+
+/* ---------- Pulsante tema ---------- */
+.theme-btn svg { width: 18px; height: 18px; }
+.topbar .theme-btn { margin-left: auto; flex: none; }
+.topbar .theme-btn + .user-menu { margin-left: 0; }
+.login-panel { position: relative; }
+.login-theme { position: absolute; top: 16px; right: 16px; }
+
+/* ---------- Telefono e tablet ----------
+   Nessun elemento deve essere più largo dello schermo: altrimenti il telefono permette di
+   "rimpicciolire" la pagina e la barra in alto non occupa più tutta la larghezza. */
+.main-wrap { min-width: 0; overflow-x: clip; }
+.content > * { min-width: 0; }
+.dash-stack { grid-template-columns: minmax(0, 1fr); }
+.two-col > *, .course-layout > *, .file-layout > *, .rank-cols > * { min-width: 0; }
+.table-wrap { max-width: calc(100% + 44px); }
+
+/* tablet (iPad in orizzontale): barra laterale più stretta */
+@media (max-width: 1180px) and (min-width: 901px) {
+  :root { --sidebar-w: 232px; }
+  .topbar { padding: 12px 24px; }
+  .content { padding: 24px 24px 36px; }
+  .two-col, .course-layout, .file-layout, .rank-cols { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* tablet in verticale e telefono: menu a scomparsa */
+@media (max-width: 900px) {
+  .two-col, .course-layout, .file-layout, .rank-cols { grid-template-columns: minmax(0, 1fr); }
+  /* iPhone/iPad ingrandiscono da soli la pagina se il testo di un campo è sotto i 16px */
+  input, select, textarea { font-size: 16px !important; }
+  .topbar { padding: 10px 16px; padding-top: max(10px, env(safe-area-inset-top)); }
+  .top-search input[type=search] { padding: .55rem .9rem .55rem 2.4rem; }
+  .table-wrap { max-width: calc(100% + 32px); }
+  .login-theme { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; z-index: 5;
+    background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .3); color: #fff; }
+  .login-grid { position: relative; }
+  .login-panel { position: static; }
+}
+
+/* tablet: schede e statistiche più compatte */
+@media (max-width: 1180px) and (min-width: 601px) {
+  .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .stat { padding: 14px; gap: 10px; }
+  .stat-ic { width: 38px; height: 38px; }
+  .stat strong { font-size: 1.35rem; }
+  .course-cover { height: 76px; }
+  .compact .course-cover { height: 66px; }
+  .cover-ic { width: 70px; height: 70px; }
+  .welcome, .course-hero { padding: 24px 24px; }
+}
+
+/* telefono: tutto più compatto */
+@media (max-width: 600px) {
+  body { font-size: 14px; }
+  h1 { font-size: 1.45rem; }
+  h2 { font-size: 1.08rem; }
+  h3 { font-size: .98rem; }
+  .topbar { gap: 8px; padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top)); }
+  .icon-btn { width: 34px; height: 34px; }
+  .avatar { width: 34px; height: 34px; font-size: .78rem; }
+  .user-btn { padding: 0; }
+  .top-search svg { left: 11px; width: 16px; height: 16px; }
+  .top-search input[type=search] { padding: .45rem .7rem .45rem 2.1rem; border-radius: 10px; }
+  .top-search input::placeholder { font-size: 14px; }
+  .content { padding: 14px 12px 28px; }
+  .footer { padding: 14px 12px; font-size: .74rem; }
+
+  .btn { padding: .55rem .9rem; font-size: .86rem; }
+  .btn-sm { padding: .38rem .65rem; font-size: .8rem; }
+  .panel { padding: 14px; border-radius: 12px; margin-bottom: 14px; }
+  .panel-head { margin-bottom: 12px; }
+  .page-head { margin-bottom: 14px; gap: 10px; }
+  .eyebrow { font-size: .66rem; }
+  .back-link { margin-bottom: 10px; }
+  .table-wrap { margin: 0 -14px; max-width: calc(100% + 28px); }
+
+  .welcome, .course-hero { padding: 18px 16px; border-radius: 14px; margin-bottom: 14px; gap: 14px; }
+  .welcome h1 { font-size: 1.35rem; }
+  .welcome-actions .btn { flex: 1 1 auto; }
+  .course-hero h1 { font-size: 1.4rem; margin: 8px 0 4px; }
+  .course-desc { font-size: .86rem; }
+  .hero-count strong { font-size: 1.7rem; }
+
+  .stats { gap: 8px; margin-bottom: 14px; }
+  .stat { padding: 10px 12px; gap: 10px; border-radius: 12px; }
+  .stat-ic { width: 32px; height: 32px; border-radius: 9px; }
+  .stat-ic svg { width: 17px; height: 17px; }
+  .stat strong { font-size: 1.2rem; }
+  .stat small { font-size: .74rem; }
+
+  .course-grid, .course-grid.compact { gap: 10px; }
+  .course-cover, .compact .course-cover { height: 64px; padding: 10px 12px; }
+  .cover-ic { width: 64px; height: 64px; }
+  .course-info { padding: 10px 12px 12px; }
+  .course-info p { margin-bottom: 8px; }
+
+  .dash-stack { gap: 14px; }
+  .file-item { gap: 10px; padding: 10px 2px; }
+  .file-thumb, .dense .file-thumb { width: 40px; height: 40px; border-radius: 9px; }
+  .file-thumb svg, .dense .file-thumb svg { width: 20px; height: 20px; }
+  .file-meta { font-size: .74rem; gap: 4px 6px; }
+  .file-actions { gap: 4px; }
+  .file-actions .icon-btn { width: 32px; height: 32px; }
+  .file-actions .icon-btn svg { width: 16px; height: 16px; }
+  .courses-toolbar { gap: 8px; margin-bottom: 14px; }
+  .courses-toolbar .aa-select { width: 100%; }
+  .courses-toolbar .filter-bar { flex-basis: 100%; gap: 8px; }
+  .degree-tabs { gap: 8px; margin-bottom: 14px; }
+  .degree-tabs a { flex: 1 1 0; min-width: 0; padding: 9px 12px; border-radius: 12px; }
+  /* corsi su due colonne, schede più basse */
+  .course-grid, .course-grid.compact, .dash-courses { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .course-cover, .compact .course-cover { height: 52px; padding: 8px 10px; }
+  .cover-ic { display: none; }
+  .course-code { font-size: .62rem; padding: 2px 7px; }
+  .course-info h3 { font-size: .9rem; overflow-wrap: anywhere; }
+  .course-info p { font-size: .76rem; }
+  .course-foot { font-size: .74rem; flex-wrap: wrap; gap: 4px; }
+  .tiers-strip { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+  .fav-btn, .kebab { width: 30px; height: 30px; }
+  .fav-btn svg, .kebab svg { width: 16px; height: 16px; }
+  .fav-btn, .course-menu { top: 8px; right: 8px; }
+  .course-item.has-menu .fav-btn { right: 44px; }
+  .course-menu-pop { width: min(240px, calc(100vw - 24px)); }
+  /* scheda nella colonna di sinistra: il menu si apre verso destra */
+  .course-grid > .course-item:nth-child(odd) .course-menu-pop { right: auto; left: calc(55px - 50vw); width: 220px; }
+  .course-tools { width: 100%; flex-wrap: nowrap; }
+  .course-tools .sort-select { flex: 0 1 auto; min-width: 0; height: 38px; }
+  .course-tools .sort-select select { font-weight: 500; max-width: 130px; }
+  .course-tools .inline-search { flex: 1 1 auto; min-width: 0; }
+  .folder-chips { flex-wrap: nowrap; overflow-x: auto; margin-right: -14px; padding-right: 14px; scrollbar-width: none; }
+  .folder-chips::-webkit-scrollbar { display: none; }
+  .folder-chips a { flex: none; }
+  .dropdown { width: min(260px, calc(100vw - 24px)); }
+  .login-panel { padding: 20px 12px 24px; }
+  .login-card { padding: 24px 18px; border-radius: 14px; }
+  .login-card h2 { font-size: 1.45rem; }
+  .login-hero { padding: 20px 16px; }
+  .hero-copy { padding: 16px 0 4px; }
+  .hero-copy h1 { font-size: 1.5rem; }
+  .lead { font-size: .95rem; }
+}

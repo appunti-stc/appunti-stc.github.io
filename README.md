@@ -178,7 +178,8 @@ Chi non ha ancora aperto corsi vede quelli con più materiali.
 - **Avviso doppioni** se si carica un file con lo stesso nome e dimensione di uno già presente.
 - **App sul telefono**: menu utente → "Installa l'app sul telefono" (Android: installazione diretta;
   iPhone/iPad: Condividi → Aggiungi alla schermata Home).
-- **Tema scuro** automatico se il dispositivo è in modalità scura.
+- **Tema scuro** automatico se il dispositivo è in modalità scura, oppure scelto con il pulsante luna/sole in alto (la scelta resta salvata).
+- **Versione per telefono e tablet** compatta: niente zoom involontario, corsi su due colonne sul telefono.
 - **Tour di benvenuto** al primo accesso (avviabile anche da Amministrazione).
 - In Amministrazione: **statistiche** degli ultimi 7 giorni, file più aperti e corsi più usati.
 

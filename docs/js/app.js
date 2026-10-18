@@ -4,7 +4,7 @@
 
   // Versione del sito: deve coincidere con data-v in index.html. Se Safari ha in
   // memoria una pagina principale vecchia, la ricarichiamo (una volta) aggirando la cache.
-  var VERSION = '20261018p';
+  var VERSION = '20261018q';
   if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('reload-v') === VERSION; sessionStorage.setItem('reload-v', VERSION); } catch (e) { /* ignora */ }
@@ -120,6 +120,7 @@
           '<form class="top-search" data-form="top-search" role="search">' + icon('search') +
             '<input type="search" name="q" placeholder="Cerca lezioni, dispense, registrazioni…" aria-label="Cerca" enterkeyhint="search">' +
           '</form>' +
+          themeButton() +
           '<div class="user-menu">' +
             '<button class="user-btn" type="button" data-action="toggle-menu" aria-haspopup="true" aria-expanded="false">' +
               '<span class="avatar">' + esc(initials(u.name)) + '</span>' +
@@ -138,6 +139,21 @@
           credit() +
           '<span>' + esc(CFG.disclaimer || 'Materiali condivisi dagli studenti per uso didattico') + ' · <a href="privacy.html">Privacy</a></span></footer>' +
       '</div>';
+  }
+
+  // Pulsante modalità chiara/scura (l'icona mostra la modalità in cui si passa)
+  function themeButton(extra) {
+    var dark = window.Theme && window.Theme.current() === 'dark';
+    var label = dark ? 'Passa alla modalità chiara' : 'Passa alla modalità scura';
+    return '<button class="icon-btn theme-btn' + (extra ? ' ' + extra : '') + '" type="button" data-action="toggle-theme" title="' + label + '" aria-label="' + label + '">' +
+      icon(dark ? 'sun' : 'moon') + '</button>';
+  }
+  function refreshThemeButtons() {
+    document.querySelectorAll('.theme-btn').forEach(function (b) {
+      var tmp = document.createElement('div');
+      tmp.innerHTML = themeButton(b.classList.contains('login-theme') ? 'login-theme' : '');
+      b.replaceWith(tmp.firstChild);
+    });
   }
 
   // File caricati da altri dopo la mia ultima visita
@@ -337,7 +353,7 @@
             '</ul></div>' +
           '<p class="hero-foot">' + esc(CFG.disclaimer || '') + ' · <a href="privacy.html">Informativa privacy</a><br>' + credit() + '</p>' +
         '</section>' +
-        '<section class="login-panel"><div class="login-card">' +
+        '<section class="login-panel">' + themeButton('login-theme') + '<div class="login-card">' +
           '<h2>Accedi</h2>' +
           '<p class="muted">Entra con il tuo account istituzionale <strong>@' + esc(CFG.allowedDomain) + '</strong>.</p>' +
           (error ? '<div class="flash flash-error">' + esc(error) + '</div>' : '') +
@@ -1169,6 +1185,7 @@
     var action = el.getAttribute('data-action');
     var id = el.getAttribute('data-id');
     switch (action) {
+      case 'toggle-theme': window.Theme.toggle(); refreshThemeButtons(); return;
       case 'toggle-sidebar': document.body.classList.toggle('sidebar-open'); return;
       case 'close-sidebar': document.body.classList.remove('sidebar-open'); return;
       case 'toggle-menu': {
@@ -1591,6 +1608,7 @@
       if (menu) menu.classList.remove('open');
     }
   });
+  if (window.Theme) window.Theme.onChange = refreshThemeButtons;
   window.addEventListener('hashchange', function () {
     if (location.hash === '#upload') return; // ancora interna della pagina corso
     route();
