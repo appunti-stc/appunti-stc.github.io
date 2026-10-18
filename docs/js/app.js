@@ -4,7 +4,7 @@
 
   // Versione del sito: deve coincidere con data-v in index.html. Se Safari ha in
   // memoria una pagina principale vecchia, la ricarichiamo (una volta) aggirando la cache.
-  var VERSION = '20261018q';
+  var VERSION = '20261018r';
   if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('reload-v') === VERSION; sessionStorage.setItem('reload-v', VERSION); } catch (e) { /* ignora */ }
@@ -1194,7 +1194,7 @@
         return;
       }
       case 'scroll-upload': document.getElementById('upload').scrollIntoView({ behavior: 'smooth' }); return;
-      case 'login': return Api.signIn().catch(fail);
+      case 'login': rememberTarget(); return Api.signIn().catch(fail);
       case 'logout':
         await Api.signOut();
         state.user = null;
@@ -1669,6 +1669,26 @@
     state.newCounts = r[1];
   }
 
+  // Link aperto senza accesso (es. un corso ricevuto in chat): dopo il login con Google si torna lì.
+  // Il ritorno da Google perde la parte "#/..." dell'indirizzo, quindi la ricordo sul dispositivo per 15 minuti.
+  var TARGET_KEY = 'after-login';
+  function rememberTarget() {
+    var h = location.hash;
+    try {
+      if (h && h !== '#/' && h.indexOf('#/') === 0) localStorage.setItem(TARGET_KEY, JSON.stringify({ hash: h, at: Date.now() }));
+      else localStorage.removeItem(TARGET_KEY);
+    } catch (e) { /* ignora */ }
+  }
+  function restoreTarget() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(TARGET_KEY) || 'null');
+      localStorage.removeItem(TARGET_KEY);
+      if (saved && /^#\/[^\s]*$/.test(saved.hash) && Date.now() - saved.at < 15 * 60000 && (location.hash || '#/') === '#/') {
+        history.replaceState(null, '', location.pathname + location.search + saved.hash);
+      }
+    } catch (e) { /* ignora */ }
+  }
+
   function maybeTour() {
     Api.tourPending().then(function (pending) { if (pending) setTimeout(startTour, 700); }, function () {});
   }
@@ -1677,6 +1697,7 @@
   Api.init().then(function (res) {
     if (res && res.user) {
       state.user = res.user;
+      restoreTarget();
       return loadPersonal().catch(function () {}).then(route).then(maybeTour);
     }
     if (res && res.error === 'domain') {
