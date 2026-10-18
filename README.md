@@ -21,7 +21,7 @@ Piattaforma in stile e-learning universitario per condividere i materiali dei co
 1. In questo repository: **Settings → Pages**.
 2. In *Build and deployment*: Source **Deploy from a branch**, poi scegli il ramo
    `claude/elearning-university-auth-dep8hk` e la cartella **`/docs`** → **Save**.
-3. Dopo 1–2 minuti il sito è online su `https://alekseysymonenko.github.io/Sito-UNI-STC/`.
+3. Dopo 1–2 minuti il sito è online su `https://appunti-stc.github.io/`.
 
 Finché il passo 2 non è completato il sito funziona in **modalità anteprima** (dati di esempio).
 
@@ -39,14 +39,14 @@ Finché il passo 2 non è completato il sito funziona in **modalità anteprima**
 2. **API e servizi → Schermata consenso OAuth**: tipo **Esterno**, nome app, email di supporto,
    poi **Pubblica app**.
 3. **Credenziali → Crea credenziali → ID client OAuth → Applicazione web**:
-   - *Origini JavaScript autorizzate*: `https://alekseysymonenko.github.io`
+   - *Origini JavaScript autorizzate*: `https://appunti-stc.github.io`
    - *URI di reindirizzamento autorizzati*: `https://<il-tuo-progetto>.supabase.co/auth/v1/callback`
      (lo trovi già scritto su Supabase in *Authentication → Sign In / Providers → Google*)
 4. Copia **ID client** e **Client secret**.
 5. Su Supabase: **Authentication → Sign In / Providers → Google** → attiva, incolla ID e secret → **Save**.
 6. Su Supabase: **Authentication → URL Configuration**:
-   - *Site URL*: `https://alekseysymonenko.github.io/Sito-UNI-STC/`
-   - *Redirect URLs*: aggiungi `https://alekseysymonenko.github.io/Sito-UNI-STC/`
+   - *Site URL*: `https://appunti-stc.github.io/`
+   - *Redirect URLs*: aggiungi `https://appunti-stc.github.io/`
 
 ### Passo 4 · Collegare il sito a Supabase
 Apri il file [`docs/config.js`](docs/config.js), tocca la matita ✏️ e incolla
@@ -115,7 +115,7 @@ Un **robot su GitHub** (gratuito) comprime ogni ora le registrazioni nuove: audi
 3. **Bucket**: *Create bucket* → nome `appunti-stc-registrazioni`, *Location: Automatic* → *Create bucket*.
 4. **CORS**: nel bucket → *Settings* → *CORS Policy* → *Add CORS policy* → incolla:
    ```json
-   [{"AllowedOrigins":["https://alekseysymonenko.github.io"],"AllowedMethods":["GET","PUT","HEAD"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag"],"MaxAgeSeconds":3600}]
+   [{"AllowedOrigins":["https://appunti-stc.github.io"],"AllowedMethods":["GET","PUT","HEAD"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag"],"MaxAgeSeconds":3600}]
    ```
 5. **Chiave**: pagina *R2 Object Storage* → *Manage API tokens* → *Create API token* → permessi
    **Object Read & Write**, solo il bucket appena creato → *Create*. Copia **Access Key ID** e
@@ -252,3 +252,9 @@ I permessi sono imposti dal database (Row Level Security), non dall'interfaccia.
 Dopo ogni modifica a CSS/JS aggiorna il numero di versione in tre punti: i `?v=` e `data-v`
 in `docs/index.html` e `VERSION` in `docs/js/app.js`. Se un browser tiene in memoria una pagina
 vecchia, il sito se ne accorge e si ricarica da solo.
+
+## Vecchio indirizzo
+Il sito era su `https://alekseysymonenko.github.io/Sito-UNI-STC/` (repository personale, poi spostato
+nell'organizzazione `appunti-stc` e rinominato `appunti-stc.github.io`). Per non rompere i link già condivisi,
+un repository `Sito-UNI-STC` nell'account personale pubblica i file di `vecchio-indirizzo/`, che rimandano al nuovo
+indirizzo mantenendo la pagina richiesta (`#/corso/...`).

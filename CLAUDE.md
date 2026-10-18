@@ -12,7 +12,8 @@ immagini, audio e video. Fatto da Aleksey Symonenko (rappresentante, utente non 
 
 ## Architettura (tutto gratuito)
 - **Sito statico** in `docs/` pubblicato da **GitHub Pages** (ramo `claude/elearning-university-auth-dep8hk`,
-  cartella `/docs`): https://alekseysymonenko.github.io/Sito-UNI-STC/
+  cartella `/docs`): https://appunti-stc.github.io/ (repository `appunti-stc/appunti-stc.github.io`, organizzazione GitHub;
+  prima era `AlekseySymonenko/Sito-UNI-STC`: il vecchio indirizzo rimanda qui con i file di `vecchio-indirizzo/`)
 - **Supabase** (progetto `bbyaljjyjfhufesjxycf`): login Google, database Postgres con Row Level
   Security, archivio file Supabase (1 GB, file vecchi) e Edge Function **`B2`** (nome MAIUSCOLO,
   "Verify JWT" disattivato).
@@ -81,8 +82,8 @@ gestiscono ruoli, sospensioni, contenuti delle pagine. Il primo utente è divent
   worker, file grandi a parti, pause, archivio pieno). Il robot si prova con PostgREST reale + moto (S3 finto) + ffmpeg.
 
 ## In sospeso
-- **Importazione dal vecchio Drive** (cartella `Scienze e Tecnologie Chimiche`, 704 file, 23,6 GB, 69 autori;
+- **Importazione dal vecchio Drive: completata.** (cartella `Scienze e Tecnologie Chimiche`, 704 file, 23,6 GB, 69 autori;
   ~20 GB sono registrazioni): codice pronto. L'utente deve: rieseguire setup.sql, configurare R2, ripubblicare B2,
   generare il codice, Secrets GitHub (fatto: R2 e robot funzionano), poi avviare `importa.gs`. `ANNI` e `NOMI` presi dai
   regolamenti 2026/27 (E2703Q, F5402Q); solo corsi con file, niente corsi vuoti.
-- Possibili: cambio URL (organizzazione GitHub `appunti-stc`), nuovi formati (.key, .pages, .rtf, .csv).
+- Possibili: nuovi formati (.key, .pages, .rtf, .csv).
