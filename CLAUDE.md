@@ -44,7 +44,10 @@ immagini, audio e video. Fatto da Aleksey Symonenko (rappresentante, utente non 
   archivi, elenco `ANNI` corso→anno), `drive-import/robot.py`.
 
 ## Funzionalità presenti
-Corsi per laurea (triennale 1–3, magistrale 1–2) e **anno accademico** (menu, normalizzato), menu ⋯
+Corsi per laurea (triennale 1–3, magistrale 1–2). Ogni riga di `courses` è un insegnamento in **un** anno accademico;
+nelle liste (Corsi, dashboard, ricerca corsi) le righe con stesso nome+laurea sono **unite in un riquadro** (`groupCourses`
+in app.js, nessuna modifica al DB) e l'anno accademico si sceglie **dentro** il corso (barra `.aa-tabs`, più "Tutti" = `?aa=tutti`);
+caricando si sceglie l'anno (l'anno in corso, se manca, viene creato al primo file); rinomina/spostamento valgono per tutti gli anni; menu ⋯
 sulle schede per modificare/spostare (solo admin); upload su B2 fino a 500 MB; anteprime
 PDF/immagini/audio/video; dashboard con i corsi aperti di recente (tabella `course_visits`, uguale su ogni dispositivo; localStorage solo di riserva); ricerca; classifica a leghe (punti: +10 file max 10/giorno, +5 a chi carica per ogni studente diverso
 che apre il file, +1 a chi apre un file nuovo max 5/giorno (`file_opens.reader_points`), −10 se un admin elimina;

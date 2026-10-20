@@ -889,6 +889,20 @@ img, video { color-scheme: normal; }
 
 .install-steps { padding-left: 1.2rem; margin: 6px 0 12px; display: grid; gap: 8px; }
 
+/* ---------- Anno accademico dentro il corso ---------- */
+.aa-tabs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -8px 0 22px; padding: 10px 12px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.aa-tabs-label { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; font-weight: 600; color: var(--ink-2); margin-right: 4px; }
+.aa-tabs-label svg { width: 16px; height: 16px; color: var(--primary); }
+.aa-tabs a { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 99px; border: 1px solid var(--line); color: var(--ink-2);
+  font-weight: 600; font-size: .86rem; text-decoration: none; white-space: nowrap; transition: border-color .15s, background .15s; }
+.aa-tabs a span { color: var(--muted); font-size: .76rem; font-weight: 500; }
+.aa-tabs a em { font-style: normal; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ok); }
+.aa-tabs a:hover { border-color: color-mix(in srgb, var(--primary) 40%, var(--line)); }
+.aa-tabs a.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.aa-tabs a.active span, .aa-tabs a.active em { color: rgba(255, 255, 255, .85); }
+.tag-aa { --kc: var(--ink-2); text-transform: none; letter-spacing: 0; }
+
 /* ---------- Pulsante tema ---------- */
 .theme-btn svg { width: 18px; height: 18px; }
 .topbar .theme-btn { margin-left: auto; flex: none; }
@@ -985,6 +999,11 @@ img, video { color-scheme: normal; }
   .course-info p { margin-bottom: 8px; }
 
   .dash-stack { gap: 14px; }
+  .aa-tabs { flex-wrap: nowrap; overflow-x: auto; margin: -4px -12px 14px; padding: 8px 12px; border-radius: 0; border-left: 0; border-right: 0; scrollbar-width: none; }
+  .aa-tabs::-webkit-scrollbar { display: none; }
+  .aa-tabs a { flex: none; padding: 5px 10px; font-size: .8rem; }
+  .aa-tabs-label { flex: none; font-size: 0; gap: 0; margin-right: 0; }
+  .aa-tabs-label svg { width: 18px; height: 18px; }
   .file-item { gap: 10px; padding: 10px 2px; }
   .file-thumb, .dense .file-thumb { width: 40px; height: 40px; border-radius: 9px; }
   .file-thumb svg, .dense .file-thumb svg { width: 20px; height: 20px; }
@@ -1017,6 +1036,7 @@ img, video { color-scheme: normal; }
   .course-tools .sort-select { flex: 0 1 auto; min-width: 0; height: 38px; }
   .course-tools .sort-select select { font-weight: 500; max-width: 130px; }
   .course-tools .inline-search { flex: 1 1 auto; min-width: 0; }
+  .course-tools .inline-search input[type=search] { width: 100%; }
   .folder-chips { flex-wrap: nowrap; overflow-x: auto; margin-right: -14px; padding-right: 14px; scrollbar-width: none; }
   .folder-chips::-webkit-scrollbar { display: none; }
   .folder-chips a { flex: none; }

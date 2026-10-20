@@ -18,7 +18,7 @@
       sidebar: true,
       emoji: '📚',
       title: 'Corsi',
-      text: 'Tutti gli insegnamenti, divisi per laurea, anno di corso e anno accademico. Apri un corso per vedere i materiali.',
+      text: 'Tutti gli insegnamenti, divisi per laurea e anno di corso. Dentro ogni corso scegli l\'anno accademico dei materiali.',
     },
     {
       target: ['.top-search'],

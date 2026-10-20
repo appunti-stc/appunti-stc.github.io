@@ -479,6 +479,9 @@
       { id: 3, name: 'Chimica Analitica', code: 'CHI-210', teacher: 'Ricci', year: '2026/2027', color: 1, degree: 'triennale', study_year: 2, description: 'Analisi quantitativa, titolazioni, metodi strumentali.' },
       { id: 4, name: 'Chimica Fisica Avanzata', code: 'CHI-520', teacher: 'Marino', year: '2026/2027', color: 3, degree: 'magistrale', study_year: 1, description: 'Termodinamica statistica e spettroscopia.' },
       { id: 5, name: 'Matematica', code: 'MAT-101', teacher: 'Greco', year: '2025-26', color: 4, degree: null, study_year: null, description: '' },
+      // stesso corso negli anni accademici precedenti: nella lista compare una volta sola
+      { id: 6, name: 'Chimica Generale e Inorganica', code: 'CHI-101', teacher: 'Rossi', year: '2025/2026', color: 5, degree: 'triennale', study_year: 1, description: '' },
+      { id: 7, name: 'Chimica generale e inorganica ', code: 'CHI-101', teacher: 'Bianchi', year: '2024-25', color: 6, degree: 'triennale', study_year: 1, description: '' },
     ];
     var files = [];
     var blobs = {};
@@ -565,6 +568,9 @@
       addFile(1, 'Registrazione lezione 3.wav', wavBlob(), 'Registrazione – Lezione 3: legame covalente', 'u-2', 900);
       addFile(2, 'Benzene.png', await imgBlob(), 'Schema anello benzenico', 'u-3', 600);
       addFile(2, 'Appunti stereochimica.pdf', pdfBlob('Appunti di stereochimica'), null, 'u-2', 120);
+      addFile(6, 'Temi esame 2026.pdf', pdfBlob('Temi d esame 2026'), 'Temi d\'esame giugno 2026', 'u-3', 200000);
+      addFile(6, 'Lezione 05 - Equilibri.pdf', pdfBlob('Lezione 5 - Equilibri'), null, 'u-2', 260000);
+      addFile(7, 'Formulario.pdf', pdfBlob('Formulario'), 'Formulario completo', 'u-2', 600000);
       addFile(3, 'Titolazioni acido-base.pdf', pdfBlob('Titolazioni acido-base'), null, 'u-3', 60);
       // cartelle di esempio nel primo corso
       files[0].folder = 'Lezioni'; files[1].folder = 'Esercizi'; files[2].folder = 'Registrazioni';

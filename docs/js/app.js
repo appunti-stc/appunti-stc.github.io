@@ -4,7 +4,7 @@
 
   // Versione del sito: deve coincidere con data-v in index.html. Se Safari ha in
   // memoria una pagina principale vecchia, la ricarichiamo (una volta) aggirando la cache.
-  var VERSION = '20261018r';
+  var VERSION = '20261020a';
   if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('reload-v') === VERSION; sessionStorage.setItem('reload-v', VERSION); } catch (e) { /* ignora */ }
@@ -94,13 +94,13 @@
         '<nav class="nav">' +
           '<p class="nav-label">Didattica</p>' +
           nav('#/', 'home', 'home', 'Dashboard') +
-          '<div class="nav-row">' + nav('#/corsi' + aaQuery('?'), 'courses', 'book', 'Corsi') +
+          '<div class="nav-row">' + nav('#/corsi', 'courses', 'book', 'Corsi') +
             '<button class="nav-toggle' + (navCoursesOpen(active) ? ' open' : '') + '" type="button" data-action="toggle-nav-courses" aria-expanded="' + navCoursesOpen(active) + '" aria-label="Mostra gli anni di corso">' + icon('chevron') + '</button></div>' +
           '<div class="nav-tree' + (navCoursesOpen(active) ? ' open' : '') + '" aria-label="Anno di corso"><p class="nav-sub-label">Anno di corso</p>' +
             DEGREES.map(function (d) {
               return '<span class="nav-group">' + d.label + '</span>' + d.years.map(function (y) {
                 var key = d.key + ':' + y;
-                return '<a class="nav-leaf' + (active === 'courses' && currentPlace === key ? ' active' : '') + '" href="#/corsi?laurea=' + d.key + '&anno=' + y + aaQuery('&') + '">' + y + '° anno</a>';
+                return '<a class="nav-leaf' + (active === 'courses' && currentPlace === key ? ' active' : '') + '" href="#/corsi?laurea=' + d.key + '&anno=' + y + '">' + y + '° anno</a>';
               }).join('');
             }).join('') + '</div>' +
           nav('#/cerca', 'search', 'search', 'Cerca materiali') +
@@ -159,9 +159,11 @@
   // File caricati da altri dopo la mia ultima visita
   function isNew(f) { return Boolean(state.since && f.created_at > state.since && f.uploaded_by !== state.user.id); }
   function isFav(id) { return state.favs.indexOf(Number(id)) >= 0; }
-  function favButton(id, extra) {
-    var on = isFav(id);
-    return '<button class="fav-btn' + (on ? ' on' : '') + (extra ? ' ' + extra : '') + '" type="button" data-action="toggle-fav" data-id="' + id + '"' +
+  // ids = tutti gli anni accademici del corso: la stellina è accesa se uno di essi è tra i preferiti
+  function favButton(id, extra, ids) {
+    ids = ids || [id];
+    var on = ids.some(isFav);
+    return '<button class="fav-btn' + (on ? ' on' : '') + (extra ? ' ' + extra : '') + '" type="button" data-action="toggle-fav" data-id="' + id + '" data-ids="' + ids.join(',') + '"' +
       ' aria-pressed="' + on + '" title="' + (on ? 'Togli dai preferiti' : 'Aggiungi ai preferiti') + '" aria-label="' + (on ? 'Togli dai preferiti' : 'Aggiungi ai preferiti') + '">' + icon('star') + '</button>';
   }
   function topFolder(f) { return f.folder ? String(f.folder).split(' / ')[0] : ''; }
@@ -180,13 +182,32 @@
   }
 
   var currentPlace = '';
-  var currentAAFilter = ''; // anno accademico scelto nella pagina Corsi (es. "2026/2027")
-  // Scelta del menu "Anno accademico" (anche "tutti"): resta finché non la cambi, anche ricaricando la pagina
-  var aaChoice = '';
-  try { aaChoice = sessionStorage.getItem('aa-choice') || ''; } catch (e) { /* ignora */ }
-  function aaQuery(sep) { return aaChoice ? sep + 'aa=' + encodeURIComponent(aaChoice.replace('/', '-')) : ''; }
-  // Per i link "Nuovo corso": solo un anno accademico vero (non "tutti")
-  function aaNewQuery(sep) { return currentAAFilter ? sep + 'aa=' + encodeURIComponent(currentAAFilter.replace('/', '-')) : ''; }
+  // Lo stesso insegnamento esiste una volta per ogni anno accademico (una riga di "courses" per anno).
+  // Nelle liste lo mostro una sola volta; l'anno accademico si sceglie dentro il corso.
+  function groupKey(c) { return (c.degree || '') + '|' + String(c.name || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+  function byAA(a, b) { return (b.aa || '').localeCompare(a.aa || ''); } // dal più recente; senza anno in fondo
+  function groupCourses(list) {
+    var map = {}, out = [];
+    list.forEach(function (c) {
+      c.aa = Api.normAA(c.year);
+      var k = groupKey(c);
+      if (!map[k]) { map[k] = { key: k, members: [] }; out.push(map[k]); }
+      map[k].members.push(c);
+    });
+    out.forEach(function (g) {
+      g.members.sort(byAA);
+      // si apre l'anno più recente che ha materiali
+      var p = g.members.filter(function (c) { return c.file_count > 0; })[0] || g.members[0];
+      g.primary = p;
+      g.id = p.id; g.name = p.name; g.code = p.code; g.teacher = p.teacher; g.color = g.members[0].color;
+      g.degree = p.degree; g.study_year = p.study_year;
+      g.ids = g.members.map(function (c) { return c.id; });
+      g.file_count = g.members.reduce(function (n, c) { return n + (c.file_count || 0); }, 0);
+      g.new_count = g.members.reduce(function (n, c) { return n + (state.newCounts[c.id] || 0); }, 0);
+    });
+    return out;
+  }
+  function aaShort(aa) { return aa ? aa.slice(0, 5) + aa.slice(7) : ''; } // "2025/2026" → "2025/26"
   function navCoursesOpen(active) {
     var pref = null;
     try { pref = localStorage.getItem('nav-courses'); } catch (e) { /* ignora */ }
@@ -258,6 +279,7 @@
   // Menu "⋯" del corso (solo admin): modifica e spostamento in un altro anno
   function courseMenu(c, extraClass) {
     var here = placementOf(c);
+    var ids = (c.ids || [c.id]).join(',');
     var places = [];
     DEGREES.forEach(function (d) { d.years.forEach(function (y) { places.push(d.key + ':' + y); }); });
     places.push('');
@@ -269,15 +291,16 @@
         places.map(function (v) {
           var cur = v === here;
           return '<button role="menuitem" type="button" class="' + (cur ? 'current' : '') + '"' + (cur ? ' disabled' : '') +
-            ' data-action="move-course" data-id="' + c.id + '" data-place="' + v + '">' + icon(cur ? 'check' : 'folder') + placementLabel(v) + '</button>';
+            ' data-action="move-course" data-id="' + c.id + '" data-ids="' + ids + '" data-place="' + v + '">' + icon(cur ? 'check' : 'folder') + placementLabel(v) + '</button>';
         }).join('') +
       '</div></div>';
   }
+  // c = gruppo di corsi (tutti gli anni accademici dello stesso insegnamento)
   function courseItem(c) {
-    return '<div class="course-item' + (isAdmin() ? ' has-menu' : '') + '">' + courseCard(c) + favButton(c.id) + (isAdmin() ? courseMenu(c) : '') + '</div>';
+    return '<div class="course-item' + (isAdmin() ? ' has-menu' : '') + '">' + courseCard(c) + favButton(c.id, '', c.ids) + (isAdmin() ? courseMenu(c) : '') + '</div>';
   }
   // Senza menu ⋯ (dashboard)
-  function courseTile(c) { return '<div class="course-item">' + courseCard(c) + favButton(c.id) + '</div>'; }
+  function courseTile(c) { return '<div class="course-item">' + courseCard(c) + favButton(c.id, '', c.ids) + '</div>'; }
 
   // Ordinamento dei file nella pagina del corso
   var ORDERS = {
@@ -291,17 +314,20 @@
   var YEAR_PREVIEW = 6; // corsi visibili per anno di corso prima di "Mostra altri"
 
   function courseCard(c) {
+    var aas = (c.members || [c]).map(function (m) { return m.aa; }).filter(Boolean);
+    var when = aas.length > 1 ? aas.length + ' anni accademici' : aas.length ? 'A.A. ' + aaShort(aas[0]) : '';
+    var fresh = c.members ? c.new_count : state.newCounts[c.id];
     return '<a class="course-card" href="#/corso/' + c.id + '">' +
       '<div class="course-cover cover-' + (c.color % 8) + '"><span class="course-code">' + esc(c.code || 'CORSO') + '</span>' +
       '<svg class="cover-ic"><use href="#i-book"/></svg></div>' +
       '<div class="course-info"><h3>' + esc(c.name) + '</h3>' +
-      '<p class="muted">' + (c.teacher ? 'Prof. ' + esc(c.teacher) : 'Docente non indicato') + (c.year ? ' · ' + esc(c.year) : '') + '</p>' +
+      '<p class="muted">' + (c.teacher ? 'Prof. ' + esc(c.teacher) : 'Docente non indicato') + (when ? ' · ' + esc(when) : '') + '</p>' +
       '<div class="course-foot"><span>' + icon('folder') + c.file_count + ' ' + (c.file_count === 1 ? 'materiale' : 'materiali') + '</span>' +
-        (state.newCounts[c.id] ? '<span class="badge-new">+' + state.newCounts[c.id] + ' nuov' + (state.newCounts[c.id] === 1 ? 'o' : 'i') + '</span>' : '') + '</div>' +
+        (fresh ? '<span class="badge-new">+' + fresh + ' nuov' + (fresh === 1 ? 'o' : 'i') + '</span>' : '') + '</div>' +
       '</div></a>';
   }
 
-  function fileItem(f, withCourse) {
+  function fileItem(f, withCourse, withAA) {
     var k = KINDS[f.kind] || KINDS.other;
     return '<li class="file-item">' +
       '<a class="file-thumb kind-' + f.kind + '" href="#/file/' + f.id + '" tabindex="-1" aria-hidden="true">' +
@@ -309,6 +335,7 @@
       '<div class="file-body">' +
         '<a class="file-title" href="#/file/' + f.id + '">' + esc(f.title) + '</a>' + (isNew(f) ? '<span class="badge-new">Nuovo</span>' : '') +
         '<div class="file-meta"><span class="tag kind-' + f.kind + '">' + k.label + '</span>' +
+          (withAA && f.aa ? '<span class="tag tag-aa">' + esc(aaShort(f.aa)) + '</span>' : '') +
           (withCourse && f.course ? '<a class="meta-link" href="#/corso/' + f.course.id + '">' + esc(f.course.name) + '</a><span class="dot">·</span>' : '') +
           (f.folder ? '<span class="meta-folder">' + icon('folder') + esc(f.folder) + '</span><span class="dot">·</span>' : '') +
           '<span>' + bytes(f.size) + '</span><span class="dot">·</span><span>' + date(f.created_at) + '</span>' +
@@ -323,9 +350,9 @@
   }
 
   var fileCache = {};
-  function fileList(files, withCourse) {
+  function fileList(files, withCourse, withAA) {
     files.forEach(function (f) { fileCache[f.id] = f; });
-    return '<ul class="file-list">' + files.map(function (f) { return fileItem(f, withCourse); }).join('') + '</ul>';
+    return '<ul class="file-list">' + files.map(function (f) { return fileItem(f, withCourse, withAA); }).join('') + '</ul>';
   }
   // Miniature delle immagini caricate dopo il rendering (URL firmati temporanei)
   function loadThumbs() {
@@ -374,15 +401,18 @@
     var res = await Promise.all([Api.stats(), Api.listCourses(), Api.listFiles({ limit: 8 }), Api.listFiles({ mine: true, limit: 300 }),
       Api.recentCourses().catch(function () { return null; })]);
     var stats = res[0], courses = res[1], recent = res[2], mine = res[3], visited = res[4] && res[4].length ? res[4] : recentCourseIds();
+    // un riquadro per insegnamento, qualunque sia l'anno accademico preferito o aperto
+    var groups = groupCourses(courses);
     var byId = {};
-    courses.forEach(function (c) { byId[c.id] = c; });
+    groups.forEach(function (g) { g.members.forEach(function (c) { byId[c.id] = g; }); });
+    var uniq = function (list) { return list.filter(function (g, i) { return g && list.indexOf(g) === i; }); };
     // prima i preferiti ⭐, poi i corsi aperti di recente
-    var favCourses = state.favs.map(function (id) { return byId[id]; }).filter(Boolean);
+    var favCourses = uniq(state.favs.map(function (id) { return byId[id]; }));
     var top = favCourses.slice();
-    visited.map(function (id) { return byId[id]; }).filter(Boolean).forEach(function (c) { if (top.length < 6 && top.indexOf(c) < 0) top.push(c); });
+    uniq(visited.map(function (id) { return byId[id]; })).forEach(function (c) { if (top.length < 6 && top.indexOf(c) < 0) top.push(c); });
     var hasRecent = top.length > 0;
     // Se ne mancano, completiamo con i corsi con più materiali
-    courses.slice().sort(function (a, b) { return b.file_count - a.file_count; }).forEach(function (c) {
+    groups.slice().sort(function (a, b) { return b.file_count - a.file_count; }).forEach(function (c) {
       if (top.length < 6 && top.indexOf(c) < 0) top.push(c);
     });
     var first = String(state.user.name).split(' ')[0];
@@ -416,17 +446,8 @@
     currentPlace = '';
     loading('courses');
     var q = (params.get('q') || '').toLowerCase();
-    var everything = await Api.listCourses();
-    everything.forEach(function (c) { c.aa = Api.normAA(c.year); });
-    var aaList = everything.map(function (c) { return c.aa; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).sort().reverse();
-    var hasNoAA = everything.some(function (c) { return !c.aa; });
-    var aaParam = (params.get('aa') || aaChoice).replace('-', '/');
-    var aaSel = aaParam === 'tutti' || aaParam === 'nessuno' || aaList.indexOf(aaParam) >= 0 ? aaParam
-      : (aaList.indexOf(currentAA()) >= 0 ? currentAA() : 'tutti');
-    currentAAFilter = aaSel === 'tutti' || aaSel === 'nessuno' ? '' : aaSel;
-    aaChoice = aaSel;
-    try { sessionStorage.setItem('aa-choice', aaSel); } catch (e) { /* ignora */ }
-    var all = everything.filter(function (c) { return aaSel === 'tutti' || (aaSel === 'nessuno' ? !c.aa : c.aa === aaSel); });
+    // un riquadro per insegnamento: l'anno accademico si sceglie dentro il corso
+    var all = groupCourses(await Api.listCourses());
     var unassigned = all.filter(function (c) { return !placementOf(c); });
     var onlyYear = Number(params.get('anno')) || 0;
     var view = params.get('laurea');
@@ -434,44 +455,35 @@
     if (view === 'da-assegnare' && !unassigned.length) view = 'triennale';
     var count = function (deg) { return all.filter(function (c) { return c.degree === deg; }).length; };
 
-    var aaLabel = aaSel === 'tutti' ? 'Tutti gli anni' : aaSel === 'nessuno' ? 'Senza anno accademico' : aaSel + (aaSel === currentAA() ? ' (in corso)' : '');
-    // tutta la barra apre il menu: il <select> invisibile la copre per intero
-    var aaSelect = '<label class="aa-select">' + icon('clock') + '<span>Anno accademico</span><strong class="aa-value">' + esc(aaLabel) + '</strong>' +
-      '<span class="aa-caret">' + icon('chevron') + '</span>' +
-      '<select data-aa-select aria-label="Anno accademico" data-view="' + view + '" data-anno="' + onlyYear + '">' +
-      '<option value="tutti"' + (aaSel === 'tutti' ? ' selected' : '') + '>Tutti gli anni</option>' +
-      aaList.map(function (v) { return '<option value="' + v + '"' + (aaSel === v ? ' selected' : '') + '>' + v + (v === currentAA() ? ' (in corso)' : '') + '</option>'; }).join('') +
-      (hasNoAA ? '<option value="nessuno"' + (aaSel === 'nessuno' ? ' selected' : '') + '>Senza anno accademico</option>' : '') +
-      '</select></label>';
     var head = '<div class="page-head"><div><p class="eyebrow">Catalogo</p><h1>Corsi</h1>' +
-      '<p class="muted">Scegli un insegnamento per consultarne i materiali o contribuire.</p></div>' +
-      '<a class="btn btn-primary" href="#/nuovo-corso?' + (view !== 'da-assegnare' ? 'posto=' + view + ':' + (onlyYear || 1) : '') + aaNewQuery('&') + '">' + icon('plus') + 'Nuovo corso</a></div>' +
-      '<div class="courses-toolbar">' + aaSelect +
+      '<p class="muted">Scegli un insegnamento: dentro trovi i materiali divisi per anno accademico.</p></div>' +
+      '<a class="btn btn-primary" href="#/nuovo-corso' + (view !== 'da-assegnare' ? '?posto=' + view + ':' + (onlyYear || 1) : '') + '">' + icon('plus') + 'Nuovo corso</a></div>' +
+      '<div class="courses-toolbar">' +
       '<form class="filter-bar" data-form="filter-courses"><div class="input-ic">' + icon('search') +
       '<input type="search" name="q" value="' + esc(params.get('q') || '') + '" placeholder="Cerca un corso per nome, codice o docente"></div>' +
       '<button class="btn btn-ghost" type="submit">Cerca</button></form></div>';
 
     var body;
     if (q) {
-      var found = everything.filter(function (c) {
-        return [c.name, c.code, c.teacher].some(function (v) { return (v || '').toLowerCase().indexOf(q) >= 0; });
+      var found = all.filter(function (g) {
+        return g.members.some(function (c) { return [c.name, c.code, c.teacher].some(function (v) { return (v || '').toLowerCase().indexOf(q) >= 0; }); });
       });
       body = found.length
         ? '<p class="muted small results-count">' + found.length + ' cors' + (found.length === 1 ? 'o' : 'i') + ' trovat' + (found.length === 1 ? 'o' : 'i') + ' · <a href="#/corsi">mostra tutti</a></p>' +
           '<div class="course-grid">' + found.map(function (c) { return courseItem(c); }).join('') + '</div>'
         : '<div class="panel">' + empty('book', 'Nessun corso corrisponde alla ricerca.') + '</div>';
     } else if (!all.length) {
-      body = '<div class="panel">' + empty('book', everything.length ? 'Nessun corso per l\'anno accademico ' + esc(aaSel) + '.' : 'Non ci sono ancora corsi.',
-        '<a class="btn btn-primary" href="#/nuovo-corso' + aaNewQuery('?') + '">' + icon('plus') + 'Crea un corso</a>') + '</div>';
+      body = '<div class="panel">' + empty('book', 'Non ci sono ancora corsi.',
+        '<a class="btn btn-primary" href="#/nuovo-corso">' + icon('plus') + 'Crea un corso</a>') + '</div>';
     } else {
       var seg = '<nav class="degree-tabs" aria-label="Corso di laurea">' +
         DEGREES.map(function (d) {
           // l'anno di corso scelto resta passando da triennale a magistrale (se esiste anche lì)
           var keepYear = onlyYear && d.years.indexOf(onlyYear) >= 0 ? '&anno=' + onlyYear : '';
-          return '<a href="#/corsi?laurea=' + d.key + keepYear + aaQuery('&') + '" class="' + (view === d.key ? 'active' : '') + '">' +
+          return '<a href="#/corsi?laurea=' + d.key + keepYear + '" class="' + (view === d.key ? 'active' : '') + '">' +
             '<strong>Laurea ' + d.label + '</strong><span>' + count(d.key) + ' cors' + (count(d.key) === 1 ? 'o' : 'i') + '</span></a>';
         }).join('') +
-        (unassigned.length ? '<a href="#/corsi?laurea=da-assegnare' + aaQuery('&') + '" class="unassigned ' + (view === 'da-assegnare' ? 'active' : '') + '"><strong>Da assegnare</strong><span>' + unassigned.length + '</span></a>' : '') +
+        (unassigned.length ? '<a href="#/corsi?laurea=da-assegnare" class="unassigned ' + (view === 'da-assegnare' ? 'active' : '') + '"><strong>Da assegnare</strong><span>' + unassigned.length + '</span></a>' : '') +
         '</nav>';
       if (view === 'da-assegnare') {
         body = seg + '<section class="year-section"><div class="year-head"><h2>Corsi da assegnare</h2>' +
@@ -481,9 +493,9 @@
         var deg = DEGREES.filter(function (d) { return d.key === view; })[0];
         if (deg.years.indexOf(onlyYear) < 0) onlyYear = 0;
         currentPlace = onlyYear ? deg.key + ':' + onlyYear : '';
-        var crumbs = '<nav class="crumbs" aria-label="Percorso">' + (aaSel !== 'tutti' ? '<span>A.A. ' + esc(aaSel === 'nessuno' ? 'non indicato' : aaSel) + '</span><span>›</span>' : '') +
-          '<a href="#/corsi' + aaQuery('?') + '">Anno di corso</a><span>›</span>' +
-          (onlyYear ? '<a href="#/corsi?laurea=' + deg.key + aaQuery('&') + '">' + deg.label + '</a><span>›</span><strong>' + onlyYear + '° anno</strong>'
+        var crumbs = '<nav class="crumbs" aria-label="Percorso">' +
+          '<a href="#/corsi">Anno di corso</a><span>›</span>' +
+          (onlyYear ? '<a href="#/corsi?laurea=' + deg.key + '">' + deg.label + '</a><span>›</span><strong>' + onlyYear + '° anno</strong>'
             : '<strong>' + deg.label + '</strong>') + '</nav>';
         body = seg + crumbs + deg.years.filter(function (y) { return !onlyYear || y === onlyYear; }).map(function (y) {
           // prima i corsi con più materiali; con tutti gli anni visibili, solo i primi 6 e gli altri a tendina
@@ -492,7 +504,7 @@
           var shown = onlyYear ? list : list.slice(0, YEAR_PREVIEW), rest = onlyYear ? [] : list.slice(YEAR_PREVIEW);
           return '<section class="year-section"><div class="year-head"><h2><span class="year-badge">' + y + '°</span> anno</h2>' +
             '<span class="muted small">' + list.length + ' cors' + (list.length === 1 ? 'o' : 'i') + '</span>' +
-            '<a class="btn btn-ghost btn-sm year-add" href="#/nuovo-corso?posto=' + deg.key + ':' + y + aaNewQuery('&') + '">' + icon('plus') + 'Aggiungi</a></div>' +
+            '<a class="btn btn-ghost btn-sm year-add" href="#/nuovo-corso?posto=' + deg.key + ':' + y + '">' + icon('plus') + 'Aggiungi</a></div>' +
             (list.length ? '<div class="course-grid">' + shown.map(courseItem).join('') + '</div>' +
               (rest.length ? '<details class="year-more"><summary>' + icon('chevron') +
                 '<span class="when-closed">Mostra altri ' + rest.length + ' cors' + (rest.length === 1 ? 'o' : 'i') + '</span><span class="when-open">Mostra meno</span></summary>' +
@@ -542,9 +554,23 @@
     var q = params.get('q') || '';
     var folder = params.get('cartella') || '';
     var order = ORDERS[params.get('ordine')] ? params.get('ordine') : 'recenti';
-    var res = await Promise.all([Api.getCourse(id), Api.listFiles({ courseId: id })]);
-    var course = res[0], all = res[1];
+    var everyAA = params.get('aa') === 'tutti';
+    var res = await Promise.all([Api.getCourse(id), Api.listCourses().catch(function () { return []; })]);
+    var course = res[0];
     if (!course) return errorPage('Non trovato', 'Il corso richiesto non esiste.');
+    course.aa = Api.normAA(course.year);
+    // gli altri anni accademici dello stesso insegnamento
+    var group = groupCourses(res[1]).filter(function (g) { return g.ids.indexOf(Number(id)) >= 0; })[0] ||
+      { members: [Object.assign({ file_count: 0 }, course)], ids: [Number(id)], color: course.color };
+    var members = group.members;
+    if (members.length < 2) everyAA = false;
+    var lists = await Promise.all((everyAA ? members : [course]).map(function (c) { return Api.listFiles({ courseId: c.id }); }));
+    var all = [].concat.apply([], lists);
+    if (everyAA) {
+      var aaOf = {};
+      members.forEach(function (c) { aaOf[c.id] = c.aa; });
+      all.forEach(function (f) { f.aa = aaOf[f.course_id] || ''; });
+    }
     rememberCourse(id);
     currentCourseFiles = all;
     var counts = {}, folders = {};
@@ -559,7 +585,7 @@
         (!folder || (folder === '__none' ? !f.folder : topFolder(f) === folder)) &&
         (!ql || [f.title, f.description, f.original_name, f.folder].some(function (v) { return (v || '').toLowerCase().indexOf(ql) >= 0; }));
     }).sort(ORDERS[order].sort);
-    var keep = { tipo: kind, q: q, cartella: folder, ordine: order === 'recenti' ? '' : order };
+    var keep = { tipo: kind, q: q, cartella: folder, ordine: order === 'recenti' ? '' : order, aa: everyAA ? 'tutti' : '' };
     var link = function (change) { return '#/corso/' + id + qs(Object.assign({}, keep, change)); };
     var tab = function (k, label, n) {
       return '<a href="' + link({ tipo: k }) + '" class="' + (kind === k ? 'active' : '') + '">' + label + ' <span>' + n + '</span></a>';
@@ -575,37 +601,59 @@
       Object.keys(ORDERS).map(function (k) { return '<option value="' + k + '"' + (k === order ? ' selected' : '') + '>' + ORDERS[k].label + '</option>'; }).join('') +
       '</select></label>';
     var allFolders = all.map(function (f) { return f.folder; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).sort();
+    // scelta dell'anno accademico (solo se il corso ne ha più di uno)
+    var aaLabel = function (c) { return c.aa ? aaShort(c.aa) : 'Senza anno'; };
+    var aaBar = members.length > 1 ? '<nav class="aa-tabs" aria-label="Anno accademico"><span class="aa-tabs-label">' + icon('clock') + 'Anno accademico</span>' +
+      members.map(function (c) {
+        var on = !everyAA && c.id === Number(id);
+        return '<a href="#/corso/' + c.id + qs({ ordine: keep.ordine }) + '" class="' + (on ? 'active' : '') + '"' + (on ? ' aria-current="page"' : '') + '>' +
+          esc(aaLabel(c)) + (c.aa === currentAA() ? ' <em>in corso</em>' : '') + ' <span>' + (c.file_count || 0) + '</span></a>';
+      }).join('') +
+      '<a href="#/corso/' + id + qs({ aa: 'tutti', ordine: keep.ordine }) + '" class="' + (everyAA ? 'active' : '') + '">Tutti <span>' + group.file_count + '</span></a></nav>' : '';
+    var heroAA = everyAA ? 'Tutti gli anni accademici' : course.aa ? 'A.A. ' + course.aa : (course.year ? 'A.A. ' + course.year : '');
     render('courses',
       '<a class="back-link" href="#/corsi' + (course.degree ? '?laurea=' + course.degree : (placementOf(course) ? '' : '?laurea=da-assegnare')) + '">' + icon('arrow-left') + 'Tutti i corsi</a>' +
-      '<section class="course-hero cover-' + (course.color % 8) + '">' +
-        '<div class="course-hero-body"><span class="course-code light">' + esc(course.code || 'CORSO') + (course.year ? ' · A.A. ' + esc(course.year) : '') + '</span>' +
+      '<section class="course-hero cover-' + (group.color % 8) + '">' +
+        '<div class="course-hero-body"><span class="course-code light">' + esc(course.code || 'CORSO') + (heroAA ? ' · ' + esc(heroAA) : '') + '</span>' +
           ' <span class="course-code light">' + esc(placementLabel(placementOf(course))) + '</span>' +
           '<h1>' + esc(course.name) + '</h1><p>' + (course.teacher ? 'Docente: Prof. ' + esc(course.teacher) : 'Docente non indicato') + '</p>' +
           (course.description ? '<p class="course-desc">' + esc(course.description) + '</p>' : '') + '</div>' +
         '<div class="course-hero-side"><div class="hero-count"><strong>' + all.length + '</strong><small>materiali</small></div>' +
-          '<div class="hero-admin">' + favButton(id, 'fav-hero') + '<a class="btn btn-light btn-sm" href="#upload" data-action="scroll-upload">' + icon('upload') + 'Carica</a>' +
+          '<div class="hero-admin">' + favButton(id, 'fav-hero', group.ids) + '<a class="btn btn-light btn-sm" href="#upload" data-action="scroll-upload">' + icon('upload') + 'Carica</a>' +
           (isAdmin() ? '<a class="btn btn-light btn-sm" href="#/modifica-corso/' + id + '">' + icon('edit') + 'Modifica</a>' +
-            '<button class="btn btn-light btn-sm danger" type="button" data-action="delete-course" data-id="' + id + '" data-name="' + esc(course.name) + '" data-count="' + all.length + '">' + icon('trash') + 'Elimina</button>' : '') +
+            (everyAA ? '' : '<button class="btn btn-light btn-sm danger" type="button" data-action="delete-course" data-id="' + id + '" data-name="' + esc(course.name + (members.length > 1 && course.aa ? ' (A.A. ' + course.aa + ')' : '')) + '" data-count="' + all.length + '">' + icon('trash') + 'Elimina</button>') : '') +
           '</div></div>' +
-      '</section>' +
+      '</section>' + aaBar +
       '<div class="course-layout">' +
         '<section class="panel"><div class="panel-head wrap"><nav class="tabs" aria-label="Filtra per tipo">' +
           tab('', 'Tutti', all.length) +
           Object.keys(KINDS).filter(function (k) { return counts[k]; }).map(function (k) { return tab(k, KINDS[k].plural, counts[k]); }).join('') +
-          '</nav><div class="course-tools">' + sortSel + '<form class="inline-search" data-form="filter-course" data-id="' + id + '" data-kind="' + kind + '" data-folder="' + esc(folder) + '" data-order="' + keep.ordine + '">' + icon('search') +
+          '</nav><div class="course-tools">' + sortSel + '<form class="inline-search" data-form="filter-course" data-id="' + id + '" data-kind="' + kind + '" data-folder="' + esc(folder) + '" data-order="' + keep.ordine + '" data-aa="' + keep.aa + '">' + icon('search') +
           '<input type="search" name="q" value="' + esc(q) + '" placeholder="Cerca nel corso"></form></div></div>' + folderBar +
-          (files.length ? fileList(files, false) : empty('folder', q || kind || folder ? 'Nessun materiale corrisponde ai filtri.' : 'Questo corso non ha ancora materiali. Sii il primo a contribuire!')) +
+          (files.length ? fileList(files, false, everyAA) : empty('folder', q || kind || folder ? 'Nessun materiale corrisponde ai filtri.' : 'Questo corso non ha ancora materiali. Sii il primo a contribuire!')) +
         '</section>' +
-        uploadPanel(id, allFolders, folder !== '__none' ? folder : '') +
+        uploadPanel(id, allFolders, folder !== '__none' ? folder : '', members, everyAA ? null : course) +
       '</div>', course.name);
     loadThumbs();
   }
 
-  function uploadPanel(courseId, folders, preset) {
+  // members = anni accademici del corso; current = anno che si sta guardando (null = "Tutti")
+  function uploadPanel(courseId, folders, preset, members, current) {
     folders = folders || [];
+    members = members || [];
+    // si può caricare in ogni anno esistente o nell'anno in corso (creato al primo caricamento)
+    var hasNow = members.some(function (c) { return c.aa === currentAA(); });
+    var pick = current ? current.id : (members.filter(function (c) { return c.aa === currentAA(); })[0] || {}).id || (members.length ? 'nuovo' : courseId);
+    var opts = members.map(function (c) {
+      return '<option value="' + c.id + '"' + (String(c.id) === String(pick) ? ' selected' : '') + '>' + (c.aa ? c.aa + (c.aa === currentAA() ? ' (in corso)' : '') : 'Senza anno accademico') + '</option>';
+    });
+    if (!hasNow && members.length) opts.unshift('<option value="nuovo"' + (pick === 'nuovo' ? ' selected' : '') + '>' + currentAA() + ' (in corso)</option>');
+    var aaField = opts.length > 1
+      ? '<label>Anno accademico<select name="aa" data-aa-upload>' + opts.join('') + '</select></label>'
+      : '';
     return '<aside class="panel upload-panel" id="upload"><h2>' + icon('upload') + 'Carica materiale</h2>' +
       '<p class="muted small">PDF, immagini, audio, video e documenti. Max ' + CFG.maxUploadMb + ' MB per file.</p>' +
-      '<form class="upload-form" data-form="upload" data-id="' + courseId + '">' +
+      '<form class="upload-form" data-form="upload" data-id="' + courseId + '">' + aaField +
         '<label class="dropzone" data-dropzone><input type="file" name="files" multiple accept="' + Api.acceptAttr + '" data-file-input>' +
           icon('upload') + '<strong>Tocca per scegliere i file</strong><span>oppure trascinali qui</span></label>' +
         '<ul class="selected-files" data-selected></ul>' +
@@ -1283,12 +1331,17 @@
       case 'start-tour': startTour(); return;
       case 'install-app': installApp(); return;
       case 'toggle-fav': {
-        var cid = Number(id), on = !isFav(cid);
+        var cid = Number(id);
+        var favIds = (el.getAttribute('data-ids') || id).split(',').map(Number);
+        var on = !favIds.some(isFav);
         el.disabled = true;
         try {
-          await Api.setFavorite(cid, on);
-          state.favs = on ? state.favs.concat([cid]) : state.favs.filter(function (x) { return x !== cid; });
-          document.querySelectorAll('.fav-btn[data-id="' + cid + '"]').forEach(function (b) {
+          if (on) await Api.setFavorite(cid, true);
+          else await Promise.all(favIds.filter(isFav).map(function (x) { return Api.setFavorite(x, false); }));
+          state.favs = on ? state.favs.concat([cid]) : state.favs.filter(function (x) { return favIds.indexOf(x) < 0; });
+          document.querySelectorAll('.fav-btn').forEach(function (b) {
+            var mine = (b.getAttribute('data-ids') || b.getAttribute('data-id')).split(',').map(Number);
+            if (!mine.some(function (x) { return favIds.indexOf(x) >= 0; })) return;
             b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
             b.title = on ? 'Togli dai preferiti' : 'Aggiungi ai preferiti';
             b.classList.remove('pop'); void b.offsetWidth; if (on) b.classList.add('pop');
@@ -1353,7 +1406,11 @@
       case 'move-course': {
         var place = el.getAttribute('data-place');
         el.closest('.course-menu').classList.remove('open');
-        try { await Api.moveCourse(Number(id), place); toast('Corso spostato in: ' + placementLabel(place) + '.'); route(); }
+        var moveIds = (el.getAttribute('data-ids') || id).split(',').map(Number);
+        try {
+          for (var mi = 0; mi < moveIds.length; mi++) await Api.moveCourse(moveIds[mi], place); // tutti gli anni accademici
+          toast('Corso spostato in: ' + placementLabel(place) + '.'); route();
+        }
         catch (err) { fail(err); }
         return;
       }
@@ -1456,15 +1513,35 @@
       case 'filter-courses': return go('#/corsi' + qs({ q: data.q }));
       case 'filter-users': return go('#/admin' + qs({ q: data.q }));
       case 'filter-course':
-        return go('#/corso/' + form.getAttribute('data-id') + qs({ tipo: form.getAttribute('data-kind'), q: data.q, cartella: form.getAttribute('data-folder'), ordine: form.getAttribute('data-order') }));
+        return go('#/corso/' + form.getAttribute('data-id') + qs({ tipo: form.getAttribute('data-kind'), q: data.q, cartella: form.getAttribute('data-folder'), ordine: form.getAttribute('data-order'), aa: form.getAttribute('data-aa') }));
       case 'course': {
         var id = Number(form.getAttribute('data-id')) || null;
         if (!String(data.name || '').trim()) return toast('Il nome del corso è obbligatorio.', 'error');
         var btn = form.querySelector('button[type=submit]');
         btn.disabled = true;
         try {
-          if (id) { await Api.updateCourse(id, data); toast('Corso aggiornato.'); go('#/corso/' + id); }
-          else { var newId = await Api.createCourse(data); toast('Corso «' + data.name.trim() + '» creato.'); go('#/corso/' + newId); }
+          var existing = groupCourses(await Api.listCourses().catch(function () { return []; }));
+          var degreeOf = (data.placement || '').split(':')[0];
+          if (id) {
+            // nome, codice e collocazione valgono per tutti gli anni accademici del corso (docente e descrizione no)
+            var siblings = (existing.filter(function (g) { return g.ids.indexOf(id) >= 0; })[0] || { members: [] }).members
+              .filter(function (c) { return c.id !== id; });
+            await Api.updateCourse(id, data);
+            for (var si = 0; si < siblings.length; si++) {
+              var sib = siblings[si];
+              await Api.updateCourse(sib.id, { name: data.name, code: data.code, placement: data.placement, year: sib.year, teacher: sib.teacher, description: sib.description });
+            }
+            toast('Corso aggiornato.'); go('#/corso/' + id);
+          } else {
+            // stesso insegnamento e stesso anno accademico già presenti: apro quello invece di creare un doppione
+            var key = groupKey({ name: data.name, degree: degreeOf });
+            var same = existing.filter(function (g) { return g.key === key; })[0];
+            var dupAA = same && same.members.filter(function (c) { return c.aa === Api.normAA(data.year) || (!c.aa && !data.year); })[0];
+            if (dupAA) { toast('Il corso «' + dupAA.name + '» esiste già per questo anno accademico: eccolo.', 'info'); return go('#/corso/' + dupAA.id); }
+            var newId = await Api.createCourse(data);
+            toast(same ? 'Aggiunto l\'anno accademico ' + (Api.normAA(data.year) || '') + ' al corso «' + same.name + '».' : 'Corso «' + data.name.trim() + '» creato.');
+            go('#/corso/' + newId);
+          }
         } catch (err) { btn.disabled = false; fail(err); }
         return;
       }
@@ -1489,7 +1566,9 @@
     var big = files.filter(function (f) { return f.size > CFG.maxUploadMb * 1024 * 1024; });
     if (big.length) return toast('Supera il limite di ' + CFG.maxUploadMb + ' MB: ' + big.map(function (f) { return f.name; }).join(', '), 'error');
 
-    var courseId = Number(form.getAttribute('data-id'));
+    var pageId = Number(form.getAttribute('data-id'));
+    var courseId = form.aa && form.aa.value !== 'nuovo' ? Number(form.aa.value) : pageId;
+    var newAA = form.aa && form.aa.value === 'nuovo';
     // avviso doppioni: stesso nome e stessa dimensione di un file già nel corso
     var dup = files.filter(function (f) {
       return currentCourseFiles.some(function (x) { return x.original_name === f.name && Number(x.size) === f.size; });
@@ -1511,6 +1590,14 @@
     var done = 0;
     var evicted = [];
     try {
+      if (newAA) {
+        // primo materiale dell'anno in corso: creo l'anno accademico copiando i dati del corso
+        var base = await Api.getCourse(pageId);
+        courseId = await Api.createCourse({
+          name: base.name, code: base.code, teacher: base.teacher, description: '', year: currentAA(),
+          placement: base.degree && base.study_year ? base.degree + ':' + base.study_year : '',
+        });
+      }
       for (var i = 0; i < files.length; i++) {
         var prefix = files.length > 1 ? 'File ' + (i + 1) + ' di ' + files.length + ' · ' : '';
         label.textContent = prefix + '0%';
@@ -1528,10 +1615,12 @@
         toast('Per fare spazio ' + (evicted.length === 1 ? 'è stato rimosso 1 file poco usato' : 'sono stati rimossi ' + evicted.length + ' file poco usati') +
           ': ' + evicted.join(', '), 'info');
       }
-      route();
+      if (courseId !== pageId) go('#/corso/' + courseId); else route();
     } catch (err) {
       fail(err);
-      if (done) { toast(done + ' file caricati prima dell\'errore.'); route(); return; }
+      if (done) { toast(done + ' file caricati prima dell\'errore.'); if (courseId !== pageId) go('#/corso/' + courseId); else route(); return; }
+      // anno accademico appena creato ma rimasto vuoto: lo tolgo per non lasciare corsi vuoti
+      if (newAA && courseId !== pageId) Api.deleteCourse(courseId).catch(function () {});
       btn.disabled = false;
       progress.hidden = true;
     }
@@ -1573,11 +1662,6 @@
       hp.set('ordine', e.target.value === 'recenti' ? '' : e.target.value);
       var obj = {}; hp.forEach(function (v, k) { obj[k] = v; });
       go('#/corso/' + e.target.getAttribute('data-id') + qs(obj));
-    }
-    if (e.target.matches('select[data-aa-select]')) {
-      var sel = e.target;
-      var p = { laurea: sel.getAttribute('data-view'), anno: Number(sel.getAttribute('data-anno')) ? sel.getAttribute('data-anno') : '', aa: sel.value.replace('/', '-') };
-      go('#/corsi' + qs(p));
     }
   });
   ['dragenter', 'dragover'].forEach(function (ev) {
