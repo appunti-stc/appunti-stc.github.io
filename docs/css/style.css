@@ -1049,3 +1049,8 @@ img, video { color-scheme: normal; }
   .hero-copy h1 { font-size: 1.5rem; }
   .lead { font-size: .95rem; }
 }
+
+/* ---------- Avviso temporaneo sui file ---------- */
+.files-notice > svg { color: var(--accent); }
+.files-notice h2 { margin: 14px 0 6px; }
+.files-notice p { max-width: 420px; margin: 0 auto; }

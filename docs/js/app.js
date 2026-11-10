@@ -4,7 +4,7 @@
 
   // Versione del sito: deve coincidere con data-v in index.html. Se Safari ha in
   // memoria una pagina principale vecchia, la ricarichiamo (una volta) aggirando la cache.
-  var VERSION = '20261020a';
+  var VERSION = '20261110a';
   if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('reload-v') === VERSION; sessionStorage.setItem('reload-v', VERSION); } catch (e) { /* ignora */ }
@@ -674,12 +674,14 @@
     fileCache[f.id] = f;
     rememberCourse(f.course_id);
     var k = KINDS[f.kind] || KINDS.other;
-    var inline = ['pdf', 'image', 'audio', 'video'].indexOf(f.kind) >= 0;
+    var notice = filesNotice(f);
+    var inline = !notice && ['pdf', 'image', 'audio', 'video'].indexOf(f.kind) >= 0;
     var url = inline ? await Api.fileUrl(f, false, true) : '';
     var mine = f.uploaded_by === state.user.id;
     var voted = mine ? false : (await Api.myVotes([f.id]).catch(function () { return []; })).indexOf(f.id) >= 0;
     var viewer;
-    if (f.kind === 'pdf') viewer = '<iframe src="' + esc(url) + '" title="' + esc(f.title) + '"></iframe>';
+    if (notice) viewer = '<div class="no-preview files-notice">' + icon('alert') + '<h2>File momentaneamente non disponibile</h2><p>' + esc(notice) + '</p></div>';
+    else if (f.kind === 'pdf') viewer = '<iframe src="' + esc(url) + '" title="' + esc(f.title) + '"></iframe>';
     else if (f.kind === 'image') viewer = '<a href="' + esc(url) + '" target="_blank" rel="noopener"><img src="' + esc(url) + '" alt="' + esc(f.title) + '"></a>';
     else if (f.kind === 'audio') viewer = '<div class="audio-card"><div class="audio-art">' + icon('audio') + '</div><strong>' + esc(f.title) + '</strong><audio controls preload="metadata" src="' + esc(url) + '"></audio></div>';
     else if (f.kind === 'video') viewer = '<video controls playsinline preload="metadata" src="' + esc(url) + '"></video>';
@@ -1217,8 +1219,15 @@
   }
 
   // ---- Azioni ------------------------------------------------------------------------
+  // Avviso temporaneo (config.js → filesNotice) per i file su Backblaze; le registrazioni su R2 restano aperte
+  function filesNotice(f) { return CFG.filesNotice && f && f.storage === 'b2' ? String(CFG.filesNotice) : ''; }
+  function noticeModal(text) {
+    infoModal('File momentaneamente non disponibile', '<p>' + esc(text) + '</p>');
+  }
+
   async function download(id) {
     var f = fileCache[id] || await Api.getFile(Number(id));
+    if (filesNotice(f)) return noticeModal(filesNotice(f));
     var url = await Api.fileUrl(f, true, true);
     var a = document.createElement('a');
     a.href = url;
