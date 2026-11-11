@@ -35,7 +35,7 @@ window.APP_CONFIG = {
 
   // Indirizzo del Worker di Cloudflare che fa da ponte verso Backblaze (vuoto = link diretti).
   // Es. 'https://appunti-stc-file.NOME.workers.dev'
-  downloadProxy: '',
+  downloadProxy: 'https://appunti-stc-file.bysjrm92r4.workers.dev',
 
   // Avviso temporaneo: se è scritto un messaggio, i file su Backblaze non si aprono né si scaricano
   // e al loro posto compare questo testo (es. limite giornaliero di download raggiunto).
