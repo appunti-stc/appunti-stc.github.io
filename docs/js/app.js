@@ -4,7 +4,7 @@
 
   // Versione del sito: deve coincidere con data-v in index.html. Se Safari ha in
   // memoria una pagina principale vecchia, la ricarichiamo (una volta) aggirando la cache.
-  var VERSION = '20261111c';
+  var VERSION = '20261111d';
   if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('reload-v') === VERSION; sessionStorage.setItem('reload-v', VERSION); } catch (e) { /* ignora */ }
@@ -801,9 +801,6 @@
       Api.importStatus().catch(function () { return null; }), Api.adminStats().catch(function () { return null; })]);
     var stats = res[0], audit = res[2], usage = res[3], preview = res[4], reports = res[5], imp = res[6], astats = res[7];
     var previewR2 = usage && usage.r2 ? await Api.evictionPreview('r2').catch(function () { return []; }) : [];
-    var q = (params.get('q') || '').toLowerCase();
-    var users = res[1].filter(function (u) { return !q || (u.name + ' ' + u.email).toLowerCase().indexOf(q) >= 0; })
-      .sort(function (a, b) { return (a.role === 'admin' ? 0 : 1) - (b.role === 'admin' ? 0 : 1) || a.name.localeCompare(b.name); });
     render('admin',
       '<div class="page-head"><div><p class="eyebrow">Gestione piattaforma</p><h1>Amministrazione</h1>' +
         '<p class="muted">Gli amministratori possono modificare i corsi ed eliminare corsi e materiali.</p></div>' +
@@ -815,30 +812,7 @@
       (usage ? usagePanel(usage, preview, stats, previewR2) : '') +
       (usage && usage.where === 'Backblaze B2' || Api.demo ? bridgePanel() : '') +
       (imp ? importPanel(imp) : '') +
-      '<section class="panel"><div class="panel-head wrap"><h2>Utenti e ruoli</h2>' +
-        '<form class="inline-search" data-form="filter-users">' + icon('search') + '<input type="search" name="q" value="' + esc(params.get('q') || '') + '" placeholder="Cerca per nome o email"></form></div>' +
-        '<p class="muted small">Gli studenti compaiono qui dopo il loro primo accesso.</p>' +
-        '<div class="table-wrap"><table class="table"><thead><tr><th>Utente</th><th>Ruolo</th><th>Caricamenti</th><th class="right">Azioni</th></tr></thead><tbody>' +
-        users.map(function (u) {
-          var admin = u.role === 'admin';
-          var banned = Boolean(u.banned_at);
-          var who = ' data-id="' + u.id + '" data-name="' + esc(u.name) + '"';
-          var actions;
-          if (banned) {
-            actions = '<button class="btn btn-ghost btn-sm" type="button" data-action="unban"' + who + '>Riattiva</button>';
-          } else if (admin) {
-            actions = '<button class="btn btn-ghost btn-sm" type="button" data-action="set-role" data-role="student"' + who + '>Revoca admin</button>';
-          } else {
-            actions = '<button class="btn btn-primary btn-sm" type="button" data-action="set-role" data-role="admin"' + who + '>' + icon('shield') + 'Rendi admin</button>' +
-              '<button class="btn btn-ghost btn-sm danger-text" type="button" data-action="ban"' + who + '>' + icon('ban') + 'Sospendi</button>';
-          }
-          return '<tr class="' + (banned ? 'is-banned' : '') + '"><td><div class="user-cell"><span class="avatar sm">' + esc(initials(u.name)) + '</span><div><strong>' + esc(u.name) + (u.id === state.user.id ? ' (tu)' : '') +
-            '</strong><small>' + esc(u.email) + '</small>' + (banned ? '<small class="ban-reason">Sospeso: ' + esc(u.banned_reason || '') + '</small>' : '') + '</div></div></td>' +
-            '<td>' + (banned ? '<span class="role role-banned">Sospeso</span>' : '<span class="role role-' + u.role + '">' + (admin ? 'Amministratore' : 'Studente') + '</span>') + '</td>' +
-            '<td>' + (u.uploads || 0) + '</td><td class="right"><div class="row-actions">' + actions + '</div></td></tr>';
-        }).join('') +
-        (users.length ? '' : '<tr><td colspan="4" class="center muted">Nessun utente trovato.</td></tr>') +
-        '</tbody></table></div></section>' +
+      usersPanel(res[1], params) +
       '<section class="panel"><div class="panel-head"><h2>Registro attività</h2></div><ul class="audit">' +
         (audit.length ? audit.map(function (a) {
           return '<li><span class="audit-action a-' + esc(a.action) + '">' + esc(ACTION_LABELS[a.action] || a.action) + '</span>' +
@@ -846,6 +820,62 @@
             '<time class="muted small">' + dateTime(a.created_at) + '</time></li>';
         }).join('') : '<li class="muted">Nessuna attività registrata.</li>') +
       '</ul></section>', 'Amministrazione');
+  }
+
+  // Elenco iscritti: filtri, ordinamento, 10 alla volta; nome cliccabile e azioni nel menu ⋯
+  var USERS_PAGE = 10;
+  var USER_FILTERS = {
+    tutti: { label: 'Tutti', test: function () { return true; } },
+    admin: { label: 'Amministratori', test: function (u) { return u.role === 'admin' && !u.banned_at; } },
+    nuovi: { label: 'Nuovi (7 giorni)', test: function (u) { return Date.now() - Date.parse(u.created_at) < 7 * 86400000; } },
+    sospesi: { label: 'Sospesi', test: function (u) { return Boolean(u.banned_at); } },
+  };
+  var USER_ORDERS = {
+    nome: { label: 'Nome (A–Z)', sort: function (a, b) { return a.name.localeCompare(b.name, 'it'); } },
+    recenti: { label: 'Iscritti di recente', sort: function (a, b) { return String(b.created_at).localeCompare(String(a.created_at)); } },
+    punti: { label: 'Più punti', sort: function (a, b) { return (b.points || 0) - (a.points || 0); } },
+    file: { label: 'Più caricamenti', sort: function (a, b) { return (b.uploads || 0) - (a.uploads || 0); } },
+  };
+  function usersPanel(all, params) {
+    var q = (params.get('q') || '').toLowerCase();
+    var filter = USER_FILTERS[params.get('filtro')] ? params.get('filtro') : 'tutti';
+    var order = USER_ORDERS[params.get('ordina')] ? params.get('ordina') : 'nome';
+    var keep = { q: params.get('q') || '', filtro: filter === 'tutti' ? '' : filter, ordina: order === 'nome' ? '' : order };
+    var users = all.filter(function (u) { return USER_FILTERS[filter].test(u) && (!q || (u.name + ' ' + u.email).toLowerCase().indexOf(q) >= 0); })
+      .sort(USER_ORDERS[order].sort);
+    var chips = '<nav class="tabs user-filters" aria-label="Filtra utenti">' + Object.keys(USER_FILTERS).map(function (k) {
+      var n = all.filter(USER_FILTERS[k].test).length;
+      if (k === 'sospesi' && !n) return '';
+      return '<a href="#/admin' + qs(Object.assign({}, keep, { filtro: k === 'tutti' ? '' : k })) + '" class="' + (filter === k ? 'active' : '') + '">' + USER_FILTERS[k].label + ' <span>' + n + '</span></a>';
+    }).join('') + '</nav>';
+    var sortSel = '<label class="sort-select">' + icon('sort') + '<select data-users-sort aria-label="Ordina utenti">' +
+      Object.keys(USER_ORDERS).map(function (k) { return '<option value="' + k + '"' + (k === order ? ' selected' : '') + '>' + USER_ORDERS[k].label + '</option>'; }).join('') + '</select></label>';
+    var item = function (u, i) {
+      var admin = u.role === 'admin', banned = Boolean(u.banned_at), me = u.id === state.user.id;
+      var who = ' data-id="' + u.id + '" data-name="' + esc(u.name) + '"';
+      var acts = banned ? '<button role="menuitem" type="button" data-action="unban"' + who + '>' + icon('check') + 'Riattiva</button>'
+        : admin ? (me ? '' : '<button role="menuitem" type="button" data-action="set-role" data-role="student"' + who + '>' + icon('user') + 'Revoca admin</button>')
+        : '<button role="menuitem" type="button" data-action="set-role" data-role="admin"' + who + '>' + icon('shield') + 'Rendi amministratore</button>' +
+          '<button role="menuitem" type="button" class="danger-text" data-action="ban"' + who + '>' + icon('ban') + 'Sospendi</button>';
+      return '<li class="user-row' + (banned ? ' is-banned' : '') + (i >= USERS_PAGE ? ' more-hidden' : '') + '">' +
+        '<a class="user-row-main" href="#/utente/' + u.id + '"><span class="avatar sm">' + esc(initials(u.name)) + '</span>' +
+          '<span class="user-row-text"><strong>' + esc(u.name) + (me ? ' (tu)' : '') + '</strong><small>' + esc(u.email) + '</small>' +
+          (banned ? '<small class="ban-reason">Sospeso: ' + esc(u.banned_reason || '') + '</small>' : '') + '</span></a>' +
+        '<span class="user-row-meta">' + (banned ? '<span class="role role-banned">Sospeso</span>' : admin ? '<span class="role role-admin">Admin</span>' : '') +
+          '<span title="File caricati">' + icon('upload') + (u.uploads || 0) + '</span><span title="Punti">' + icon('trophy') + (u.points || 0) + '</span>' +
+          '<span class="muted" title="Iscritto il">' + date(u.created_at) + '</span></span>' +
+        (acts ? '<div class="course-menu row-menu"><button class="icon-btn" type="button" data-action="course-menu" aria-haspopup="true" aria-label="Azioni per ' + esc(u.name) + '">' + icon('dots') + '</button>' +
+          '<div class="course-menu-pop" role="menu">' + acts + '</div></div>' : '<span class="row-menu-empty"></span>') +
+        '</li>';
+    };
+    return '<section class="panel users-panel"><div class="panel-head wrap"><h2>Utenti e ruoli <span class="muted small">' + all.length + ' iscritti</span></h2>' +
+        '<form class="inline-search" data-form="filter-users" data-filter="' + keep.filtro + '" data-order="' + keep.ordina + '">' + icon('search') +
+        '<input type="search" name="q" value="' + esc(params.get('q') || '') + '" placeholder="Cerca per nome o email"></form></div>' +
+      '<div class="users-tools">' + chips + sortSel + '</div>' +
+      (users.length ? '<ul class="user-list" data-user-list>' + users.map(item).join('') + '</ul>' +
+        (users.length > USERS_PAGE ? '<button class="btn btn-ghost btn-block" type="button" data-action="more-users">' + icon('chevron') + 'Mostra altri <span data-more-count>' + Math.min(USERS_PAGE, users.length - USERS_PAGE) + '</span> (' + (users.length - USERS_PAGE) + ' nascosti)</button>' : '')
+        : '<p class="center muted">Nessun utente trovato.</p>') +
+      '<p class="muted small">Gli studenti compaiono qui dopo il loro primo accesso. Tocca un nome per vedere il suo profilo e i suoi file.</p></section>';
   }
 
   // Statistiche d'uso (ultimi 7 giorni, file più aperti, corsi più usati nell'ultimo mese)
@@ -1363,6 +1393,14 @@
         el.disabled = false;
         return;
       }
+      case 'more-users': {
+        var hidden = document.querySelectorAll('[data-user-list] .more-hidden');
+        Array.prototype.slice.call(hidden, 0, USERS_PAGE).forEach(function (li) { li.classList.remove('more-hidden'); });
+        var left = hidden.length - USERS_PAGE;
+        if (left <= 0) el.remove();
+        else el.innerHTML = icon('chevron') + 'Mostra altri ' + Math.min(USERS_PAGE, left) + ' (' + left + ' nascosti)';
+        return;
+      }
       case 'bridge-check': {
         el.disabled = true;
         var bbox = document.querySelector('[data-bridge-box]');
@@ -1569,7 +1607,7 @@
       case 'search':
         return go('#/cerca' + qs({ q: (data.q || '').trim(), tipo: data.tipo }));
       case 'filter-courses': return go('#/corsi' + qs({ q: data.q }));
-      case 'filter-users': return go('#/admin' + qs({ q: data.q }));
+      case 'filter-users': return go('#/admin' + qs({ q: data.q, filtro: form.getAttribute('data-filter'), ordina: form.getAttribute('data-order') }));
       case 'filter-course':
         return go('#/corso/' + form.getAttribute('data-id') + qs({ tipo: form.getAttribute('data-kind'), q: data.q, cartella: form.getAttribute('data-folder'), ordine: form.getAttribute('data-order'), aa: form.getAttribute('data-aa') }));
       case 'course': {
@@ -1715,6 +1753,12 @@
   });
   document.addEventListener('change', function (e) {
     if (e.target.matches('[data-file-input]')) showSelected(e.target);
+    if (e.target.matches('select[data-users-sort]')) {
+      var up = parseHash().params;
+      up.set('ordina', e.target.value === 'nome' ? '' : e.target.value);
+      var uo = {}; up.forEach(function (v, k) { uo[k] = v; });
+      go('#/admin' + qs(uo));
+    }
     if (e.target.matches('select[data-course-sort]')) {
       var hp = parseHash().params;
       hp.set('ordine', e.target.value === 'recenti' ? '' : e.target.value);
