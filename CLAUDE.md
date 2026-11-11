@@ -30,7 +30,8 @@ immagini, audio e video. Fatto da Aleksey Symonenko (rappresentante, utente non 
   (`app_settings.service_token_hash`); RPC `import_*` e `robot_*` lo verificano.
 - **Worker Cloudflare** (`cloudflare-worker/worker.js`, da incollare nel pannello Cloudflare): ponte per i link firmati di B2,
   così i download non contano nel limite gratuito di Backblaze (1 GB/giorno). Attivo se `docs/config.js` → `downloadProxy`
-  ha l'indirizzo `….workers.dev`. `filesNotice` in config.js = avviso temporaneo sui file B2 (non per gli admin).
+  ha l'indirizzo `….workers.dev`. `filesNotice` in config.js = avviso manuale sui file B2 (non per gli admin); in più il sito legge 1 byte prima
+  di aprire/scaricare un file B2 (`Api.isCapped`) e, se Backblaze risponde "cap exceeded", mostra l'avviso da solo.
 - **Google OAuth** (Google Cloud, app "e-Learning Bicocca", in produzione) collegato a Supabase.
 - Accesso consentito solo a `@campus.unimib.it` (controllato dal database, `is_campus()`).
 

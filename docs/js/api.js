@@ -416,6 +416,17 @@
 
       async storageCheck() { return b2({ action: 'storage-check' }); },
 
+      // true se Backblaze rifiuta il file perché il limite giornaliero di download è pieno.
+      // Legge un solo byte; in caso di dubbio (rete, risposta illeggibile) lascia aprire il file.
+      async isCapped(file, link) {
+        if (!file || file.storage !== 'b2' || !link) return false;
+        try {
+          var res = await fetch(link, { headers: { Range: 'bytes=0-0' }, cache: 'no-store' });
+          if (res.status !== 403) return false;
+          return /cap exceeded/i.test(await res.text());
+        } catch (e) { return false; }
+      },
+
       // Prova del ponte Cloudflare: lo stesso documento (solo il primo KB) letto passando dal Worker
       // e direttamente da Backblaze. Se Backblaze è al limite ma dal ponte arriva, il ponte funziona.
       async bridgeCheck() {
@@ -743,6 +754,7 @@
       async storageCheck() {
         return { origin: location.origin, results: [{ store: 'b2', ok: true, steps: [], message: 'Anteprima: nessun archivio reale da verificare.' }] };
       },
+      async isCapped() { return false; },
       async bridgeCheck() {
         await wait();
         return { proxy: CFG.downloadProxy || '', ping: true, file: 'Documento di prova', bridge: { ok: true, status: 206 }, direct: { ok: false, status: 403, capped: true, detail: 'download bandwidth cap exceeded' } };

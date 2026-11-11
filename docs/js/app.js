@@ -4,7 +4,7 @@
 
   // Versione del sito: deve coincidere con data-v in index.html. Se Safari ha in
   // memoria una pagina principale vecchia, la ricarichiamo (una volta) aggirando la cache.
-  var VERSION = '20261111d';
+  var VERSION = '20261111e';
   if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('reload-v') === VERSION; sessionStorage.setItem('reload-v', VERSION); } catch (e) { /* ignora */ }
@@ -676,7 +676,13 @@
     var k = KINDS[f.kind] || KINDS.other;
     var notice = filesNotice(f);
     var inline = !notice && ['pdf', 'image', 'audio', 'video'].indexOf(f.kind) >= 0;
-    var url = inline ? await Api.fileUrl(f, false, true) : '';
+    var url = '';
+    if (inline) {
+      url = await Api.fileUrl(f, false, false);
+      // limite giornaliero di Backblaze raggiunto: avviso invece della pagina d'errore (e l'apertura non si conta)
+      if (await Api.isCapped(f, url)) { notice = CAP_NOTICE; inline = false; url = ''; }
+      else Api.fileUrl(f, false, true).catch(function () {});
+    }
     var mine = f.uploaded_by === state.user.id;
     var voted = mine ? false : (await Api.myVotes([f.id]).catch(function () { return []; })).indexOf(f.id) >= 0;
     var viewer;
@@ -1292,6 +1298,8 @@
   // ---- Azioni ------------------------------------------------------------------------
   // Avviso temporaneo (config.js → filesNotice) per i file su Backblaze; le registrazioni su R2 restano aperte
   function filesNotice(f) { return CFG.filesNotice && f && f.storage === 'b2' && !isAdmin() ? String(CFG.filesNotice) : ''; }
+  // Mostrato in automatico quando Backblaze risponde "limite raggiunto"
+  var CAP_NOTICE = 'Stiamo lavorando per risolvere il problema. Ci scusiamo per il disagio.';
   function noticeModal(text) {
     infoModal('File momentaneamente non disponibile', '<p>' + esc(text) + '</p>');
   }
@@ -1299,7 +1307,9 @@
   async function download(id) {
     var f = fileCache[id] || await Api.getFile(Number(id));
     if (filesNotice(f)) return noticeModal(filesNotice(f));
-    var url = await Api.fileUrl(f, true, true);
+    var url = await Api.fileUrl(f, true, false);
+    if (await Api.isCapped(f, url)) return noticeModal(CAP_NOTICE);
+    Api.fileUrl(f, true, true).catch(function () {});
     var a = document.createElement('a');
     a.href = url;
     a.download = f.original_name;

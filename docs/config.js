@@ -41,5 +41,6 @@ window.APP_CONFIG = {
   // e al loro posto compare questo testo (es. limite giornaliero di download raggiunto).
   // Gli amministratori vedono comunque i file (per provare che tutto funzioni).
   // Per tornare alla normalità: filesNotice: '',
-  filesNotice: 'Stiamo lavorando per risolvere il problema. Ci scusiamo per il disagio.',
+  // (Non serve più accenderlo a mano: se Backblaze risponde "limite raggiunto" il sito mostra l'avviso da solo.)
+  filesNotice: '',
 };
