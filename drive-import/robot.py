@@ -19,9 +19,6 @@ import uuid
 import zipfile
 from pathlib import Path
 
-import boto3
-from botocore.config import Config
-
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '').rstrip('/')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
 TOKEN = os.environ.get('SERVICE_TOKEN', '')
@@ -42,6 +39,8 @@ def rpc(name, args):
 
 
 def s3_client():
+    import boto3  # caricato solo quando serve: il controllo iniziale gira senza
+    from botocore.config import Config
     endpoint = os.environ.get('R2_ENDPOINT') or f"https://{os.environ.get('R2_ACCOUNT_ID', '')}.r2.cloudflarestorage.com"
     return boto3.client(
         's3', endpoint_url=endpoint, region_name='auto',
@@ -145,6 +144,19 @@ def process_zip(s3, f, work: Path, deadline: float):
     return f'{len(done) + added} lezioni estratte'
 
 
+def count_pending():
+    """Per GitHub Actions: scrive pending=N, così ffmpeg si installa solo se c'è lavoro."""
+    n = 0
+    if TOKEN and SUPABASE_URL:
+        n = len([f for f in rpc('robot_pending', {'token': TOKEN, 'lim': 20}) or [] if f['storage'] == 'r2'])
+    print(f'Registrazioni da elaborare: {n}')
+    out = os.environ.get('GITHUB_OUTPUT')
+    if out:
+        with open(out, 'a') as fh:
+            fh.write(f'pending={n}\n')
+    return 0
+
+
 def main():
     if not (TOKEN and BUCKET and SUPABASE_URL):
         print('Robot non ancora configurato (Secrets mancanti): niente da fare.')
@@ -187,4 +199,4 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(count_pending() if '--pending' in sys.argv else main())

@@ -38,13 +38,27 @@ jobs:
         if: steps.cfg.outputs.ready == 'true'
         with:
           python-version: '3.12'
-      - name: Installa ffmpeg e boto3
+      - name: C'è qualcosa da comprimere?
+        id: work
         if: steps.cfg.outputs.ready == 'true'
+        env:
+          SUPABASE_URL: https://bbyaljjyjfhufesjxycf.supabase.co
+          SUPABASE_KEY: sb_publishable_i2fK_GSxrDxBBXTLZrnccQ_5Ct0ml8F
+          SERVICE_TOKEN: ${{ secrets.SERVICE_TOKEN }}
+        run: python drive-import/robot.py --pending
+      # ffmpeg solo se serve; se i server di Ubuntu non rispondono riprova 3 volte, poi rimanda all'ora dopo
+      - name: Installa ffmpeg e boto3
+        if: steps.cfg.outputs.ready == 'true' && steps.work.outputs.pending != '0'
+        timeout-minutes: 20
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+          for i in 1 2 3; do
+            if sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null; then break; fi
+            if [ "$i" = 3 ]; then echo "::warning::Server di Ubuntu non raggiungibili: riprovo alla prossima esecuzione."; exit 1; fi
+            echo "Server di Ubuntu non raggiungibili, nuovo tentativo tra 60 secondi…"; sleep 60
+          done
           python -m pip install -q boto3
       - name: Comprimi le registrazioni
-        if: steps.cfg.outputs.ready == 'true'
+        if: steps.cfg.outputs.ready == 'true' && steps.work.outputs.pending != '0'
         env:
           SUPABASE_URL: https://bbyaljjyjfhufesjxycf.supabase.co
           SUPABASE_KEY: sb_publishable_i2fK_GSxrDxBBXTLZrnccQ_5Ct0ml8F
