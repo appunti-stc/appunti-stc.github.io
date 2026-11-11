@@ -416,6 +416,32 @@
 
       async storageCheck() { return b2({ action: 'storage-check' }); },
 
+      // Prova del ponte Cloudflare: lo stesso documento (solo il primo KB) letto passando dal Worker
+      // e direttamente da Backblaze. Se Backblaze è al limite ma dal ponte arriva, il ponte funziona.
+      async bridgeCheck() {
+        var proxy = String(CFG.downloadProxy || '').replace(/\/+$/, '');
+        var out = { proxy: proxy };
+        if (!proxy) return out;
+        try {
+          var pr = await fetch(proxy + '/ping', { cache: 'no-store' });
+          out.ping = pr.ok && (await pr.text()).trim() === 'ok';
+        } catch (e) { out.ping = false; }
+        var rows = check(await sb.from('files').select('id, title').eq('storage', 'b2').order('size', { ascending: true }).limit(1));
+        if (!rows.length) return out;
+        out.file = rows[0].title;
+        var r = await b2({ action: 'url', id: rows[0].id, download: false });
+        var probe = async function (link) {
+          try {
+            var res = await fetch(link, { headers: { Range: 'bytes=0-1023' }, cache: 'no-store' });
+            var txt = res.ok ? '' : (await res.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            return { ok: res.ok, status: res.status, capped: /cap exceeded/i.test(txt), detail: txt.slice(0, 160) };
+          } catch (e) { return { ok: false, status: 0, capped: false, detail: '' }; }
+        };
+        out.bridge = await probe(viaProxy(r.url));
+        out.direct = await probe(r.url);
+        return out;
+      },
+
       // Ultima visita: i file caricati dopo questa data sono "Nuovi" (null se il database non è aggiornato)
       async visit() {
         var res = await sb.rpc('visit');
@@ -716,6 +742,10 @@
       },
       async storageCheck() {
         return { origin: location.origin, results: [{ store: 'b2', ok: true, steps: [], message: 'Anteprima: nessun archivio reale da verificare.' }] };
+      },
+      async bridgeCheck() {
+        await wait();
+        return { proxy: CFG.downloadProxy || '', ping: true, file: 'Documento di prova', bridge: { ok: true, status: 206 }, direct: { ok: false, status: 403, capped: true, detail: 'download bandwidth cap exceeded' } };
       },
       async importStatus() {
         return { has_token: false, is_owner: true, imported: 0, imported_b2: 0, imported_r2: 0, processing: 0, authors: 0, authors_waiting: 0, errors: [], last: null };

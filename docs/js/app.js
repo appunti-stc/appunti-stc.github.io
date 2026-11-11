@@ -4,7 +4,7 @@
 
   // Versione del sito: deve coincidere con data-v in index.html. Se Safari ha in
   // memoria una pagina principale vecchia, la ricarichiamo (una volta) aggirando la cache.
-  var VERSION = '20261111b';
+  var VERSION = '20261111c';
   if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('reload-v') === VERSION; sessionStorage.setItem('reload-v', VERSION); } catch (e) { /* ignora */ }
@@ -813,6 +813,7 @@
       reportsPanel(reports) +
       (astats ? statsPanel(astats) : '') +
       (usage ? usagePanel(usage, preview, stats, previewR2) : '') +
+      (usage && usage.where === 'Backblaze B2' || Api.demo ? bridgePanel() : '') +
       (imp ? importPanel(imp) : '') +
       '<section class="panel"><div class="panel-head wrap"><h2>Utenti e ruoli</h2>' +
         '<form class="inline-search" data-form="filter-users">' + icon('search') + '<input type="search" name="q" value="' + esc(params.get('q') || '') + '" placeholder="Cerca per nome o email"></form></div>' +
@@ -925,6 +926,36 @@
       'solo i file meno aperti di quell\'archivio: per i documenti si contano le aperture dell\'ultimo anno e mezzo, ' +
       'per le registrazioni dell\'ultimo anno. Mai eliminati i file caricati da meno di 14 giorni, quelli importati dal Drive ' +
       'nei primi 6 mesi e quelli protetti 📌.</p></section>';
+  }
+
+  // Ponte Cloudflare per i download da Backblaze (config.js → downloadProxy) e avviso agli studenti
+  function bridgePanel() {
+    var proxy = CFG.downloadProxy || '';
+    return '<section class="panel bridge"><div class="panel-head wrap"><h2>' + icon('link') + 'Ponte Cloudflare per i documenti</h2>' +
+        (proxy ? '<button class="btn btn-ghost btn-sm" type="button" data-action="bridge-check">' + icon('check') + 'Verifica il ponte</button>' : '') + '</div>' +
+      '<p class="small">' + (proxy ? 'Attivo: i documenti di Backblaze passano da <code>' + esc(proxy.replace(/^https:\/\//, '')) + '</code>, così non dovrebbero contare nel limite giornaliero gratuito di download.'
+        : 'Non attivo: i documenti vengono scaricati direttamente da Backblaze (limite gratuito di circa 1 GB al giorno).') + '</p>' +
+      '<p class="small">Avviso agli studenti sui documenti: <strong>' + (CFG.filesNotice ? 'attivo' : 'spento') + '</strong>' +
+        (CFG.filesNotice ? ' («' + esc(CFG.filesNotice) + '»). Gli amministratori vedono comunque i file.' : '.') + '</p>' +
+      '<div data-bridge-box></div></section>';
+  }
+  function bridgeResult(r) {
+    var line = function (ok, title, detail) {
+      return '<li class="' + (ok ? 'ok' : 'bad') + '">' + icon(ok ? 'check' : 'alert') + '<div><strong>' + esc(title) + '</strong>' + (detail ? '<small class="muted">' + esc(detail) + '</small>' : '') + '</div></li>';
+    };
+    if (!r.file) return '<ul class="check-list">' + line(r.ping, r.ping ? 'Il ponte risponde' : 'Il ponte non risponde') + '</ul><p class="small muted">Nessun documento su Backblaze da provare.</p>';
+    var directBlocked = !r.direct.ok;
+    var verdict;
+    if (r.bridge.ok && directBlocked) verdict = '✅ <strong>Funziona.</strong> Backblaze rifiuta i download diretti (limite di oggi raggiunto), ma dal ponte i documenti arrivano: si può spegnere l\'avviso agli studenti.';
+    else if (r.bridge.ok) verdict = '🟡 <strong>Il ponte funziona</strong>, ma oggi il limite di Backblaze non è ancora pieno: per la conferma definitiva guarda in Backblaze → Caps & Alerts che il valore "Download Bandwidth – Today" non salga mentre gli studenti aprono i file. Oppure ripeti questa verifica quando il limite è pieno.';
+    else if (r.bridge.capped) verdict = '❌ <strong>Il ponte non aggira il limite:</strong> anche passando da Cloudflare Backblaze conta i download. Serve il piano B (compressione dei PDF e spostamento su R2).';
+    else verdict = '❌ <strong>Il ponte non funziona.</strong> Controlla che il codice del Worker su Cloudflare sia quello giusto e pubblicato (Deploy).';
+    return '<ul class="check-list">' +
+      line(r.ping, r.ping ? 'Il Worker di Cloudflare risponde' : 'Il Worker di Cloudflare non risponde') +
+      line(r.bridge.ok, r.bridge.ok ? 'Documento ricevuto passando dal ponte' : 'Documento non ricevuto dal ponte', r.bridge.ok ? '' : (r.bridge.status ? 'Risposta ' + r.bridge.status + (r.bridge.detail ? ': ' + r.bridge.detail : '') : 'nessuna risposta')) +
+      line(!directBlocked, directBlocked ? 'Download diretto da Backblaze bloccato' : 'Download diretto da Backblaze possibile',
+        directBlocked ? (r.direct.capped || !r.direct.status ? 'limite giornaliero di download raggiunto' : 'risposta ' + r.direct.status) : 'il limite di oggi non è ancora pieno') +
+      '</ul><p class="small">' + verdict + '</p><p class="small muted">Prova fatta su «' + esc(r.file) + '» (solo il primo KB, consumo trascurabile).</p>';
   }
 
   function importPanel(st) {
@@ -1329,6 +1360,14 @@
             '<input type="text" readonly value="' + esc(code) + '" data-token-value>' +
             '<button class="btn btn-primary btn-sm" type="button" data-action="copy-token">' + icon('check') + 'Copia</button></div>';
         } catch (err) { fail(err); }
+        el.disabled = false;
+        return;
+      }
+      case 'bridge-check': {
+        el.disabled = true;
+        var bbox = document.querySelector('[data-bridge-box]');
+        bbox.innerHTML = '<p class="muted small">Verifica in corso…</p>';
+        try { bbox.innerHTML = bridgeResult(await Api.bridgeCheck()); } catch (err) { bbox.innerHTML = ''; fail(err); }
         el.disabled = false;
         return;
       }
