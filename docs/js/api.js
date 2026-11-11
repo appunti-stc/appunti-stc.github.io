@@ -46,6 +46,17 @@
     return typeof email === 'string' && email.toLowerCase().endsWith('@' + CFG.allowedDomain);
   }
 
+  // Link di Backblaze fatti passare dal Worker di Cloudflare (config.js → downloadProxy):
+  // così i download non contano nel limite giornaliero gratuito di Backblaze.
+  function viaProxy(link) {
+    var proxy = String(CFG.downloadProxy || '').replace(/\/+$/, '');
+    if (!proxy) return link;
+    try {
+      var u = new URL(link);
+      return /\.backblazeb2\.com$/.test(u.hostname) ? proxy + u.pathname + u.search : link;
+    } catch (e) { return link; }
+  }
+
   function baseName(name) { return name.replace(/\.[^.]+$/, '').slice(0, 200) || name; }
   function clean(v, max) { return String(v == null ? '' : v).trim().slice(0, max); }
   // Anno accademico in forma standard "2026/2027" (accetta "2026-27", "26/27", "2026"...)
@@ -305,8 +316,9 @@
           var hit = urlCache[ck];
           if (hit && hit.until > Date.now()) return hit.url;
           var r = await b2({ action: 'url', id: file.id, download: Boolean(download) });
-          urlCache[ck] = { url: r.url, until: Date.now() + (r.expires - 300) * 1000 };
-          return r.url;
+          var link = viaProxy(r.url);
+          urlCache[ck] = { url: link, until: Date.now() + (r.expires - 300) * 1000 };
+          return link;
         }
         var res = await sb.storage.from(BUCKET).createSignedUrl(file.storage_path, 3600, download ? { download: file.original_name } : undefined);
         return check(res).signedUrl;

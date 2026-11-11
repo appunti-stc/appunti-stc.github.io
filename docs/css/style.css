@@ -1054,3 +1054,19 @@ img, video { color-scheme: normal; }
 .files-notice > svg { color: var(--accent); }
 .files-notice h2 { margin: 14px 0 6px; }
 .files-notice p { max-width: 420px; margin: 0 auto; }
+
+/* ---------- Classifica: separatore prima della propria posizione ---------- */
+.rank-table tr.rank-gap td { padding: 10px 12px 6px; border-bottom: 0; background: none; }
+.rank-table tr.rank-gap span { display: flex; align-items: center; gap: 10px; font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.rank-table tr.rank-gap span::before, .rank-table tr.rank-gap span::after { content: ''; flex: 1; border-top: 2px dashed var(--line); }
+.rank-table tr.is-me td { font-weight: 600; }
+.rank-table tr.is-me td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
+/* su telefono la tabella sta nello schermo: niente colonna "File", lega solo con lo stemma e il nome breve */
+@media (max-width: 600px) {
+  .rank-table th:nth-child(4), .rank-table td:nth-child(4) { display: none; }
+  .rank-table th, .rank-table td { padding-left: 8px; padding-right: 8px; }
+  .rank-table .rank-pos { width: 28px; }
+  .rank-table .user-cell .avatar { display: none; }
+  .rank-table .league-cell { gap: 4px; font-size: .78rem; white-space: normal; }
+  .rank-table .league-cell svg { width: 24px; height: 24px; }
+}

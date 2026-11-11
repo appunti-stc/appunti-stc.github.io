@@ -4,7 +4,7 @@
 
   // Versione del sito: deve coincidere con data-v in index.html. Se Safari ha in
   // memoria una pagina principale vecchia, la ricarichiamo (una volta) aggirando la cache.
-  var VERSION = '20261110a';
+  var VERSION = '20261111a';
   if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('reload-v') === VERSION; sessionStorage.setItem('reload-v', VERSION); } catch (e) { /* ignora */ }
@@ -993,14 +993,24 @@
         '<small>' + esc(r.league.label) + ' · ' + r.points + ' pt</small></div>';
     }).join('') + '</section>' : '';
 
-    var table = '<section class="panel"><div class="panel-head"><h2>Classifica generale</h2></div>' +
+    // solo i primi 10; chi è più in basso vede la propria riga in fondo, separata
+    var TOP = 10;
+    var row = function (r) {
+      var mine = r.user_id === state.user.id;
+      return '<tr class="' + (mine ? 'is-me' : '') + '"' + (mine ? ' aria-current="true"' : '') + '><td class="rank-pos">' + r.rank_pos + '</td>' +
+        '<td><a class="user-cell user-link" href="#/utente/' + r.user_id + '"><span class="avatar sm">' + esc(initials(r.name)) + '</span><strong>' + esc(r.name) + (mine ? ' (tu)' : '') + '</strong></a></td>' +
+        '<td><div class="league-cell">' + L.emblem(r.league.tier.key, 32) + '<span>' + esc(r.league.label) + '</span></div></td>' +
+        '<td class="right">' + (r.upload_count || 0) + '</td><td class="right"><strong>' + r.points + '</strong></td></tr>';
+    };
+    var top = list.slice(0, TOP);
+    var meBelow = meIdx < 0 || meIdx >= TOP;
+    var meRow = meBelow ? Object.assign({ user_id: state.user.id, name: state.user.name }, me) : null;
+    var table = '<section class="panel"><div class="panel-head"><h2>Top ' + TOP + '</h2>' +
+        (list.length > TOP ? '<span class="muted small">su ' + list.length + ' studenti</span>' : '') + '</div>' +
       (list.length ? '<div class="table-wrap"><table class="table rank-table"><thead><tr><th>#</th><th>Studente</th><th>Lega</th><th class="right">File</th><th class="right">Punti</th></tr></thead><tbody>' +
-        list.map(function (r) {
-          return '<tr class="' + (r.user_id === state.user.id ? 'is-me' : '') + '"><td class="rank-pos">' + r.rank_pos + '</td>' +
-            '<td><a class="user-cell user-link" href="#/utente/' + r.user_id + '"><span class="avatar sm">' + esc(initials(r.name)) + '</span><strong>' + esc(r.name) + (r.user_id === state.user.id ? ' (tu)' : '') + '</strong></a></td>' +
-            '<td><div class="league-cell">' + L.emblem(r.league.tier.key, 32) + '<span>' + esc(r.league.label) + '</span></div></td>' +
-            '<td class="right">' + (r.upload_count || 0) + '</td><td class="right"><strong>' + r.points + '</strong></td></tr>';
-        }).join('') + '</tbody></table></div>' : empty('trophy', 'Ancora nessun punteggio: carica il primo file!')) + '</section>';
+        top.map(row).join('') +
+        (meRow ? '<tr class="rank-gap" aria-hidden="true"><td colspan="5"><span>La tua posizione</span></td></tr>' + row(meRow) : '') +
+        '</tbody></table></div>' : empty('trophy', 'Ancora nessun punteggio: carica il primo file!')) + '</section>';
 
     var rules = '<section class="panel rules"><h2>Come si guadagnano i punti</h2><ul>' +
       '<li><strong>+10</strong> per ogni file caricato (fino a 10 file al giorno)</li>' +
@@ -1220,7 +1230,7 @@
 
   // ---- Azioni ------------------------------------------------------------------------
   // Avviso temporaneo (config.js → filesNotice) per i file su Backblaze; le registrazioni su R2 restano aperte
-  function filesNotice(f) { return CFG.filesNotice && f && f.storage === 'b2' ? String(CFG.filesNotice) : ''; }
+  function filesNotice(f) { return CFG.filesNotice && f && f.storage === 'b2' && !isAdmin() ? String(CFG.filesNotice) : ''; }
   function noticeModal(text) {
     infoModal('File momentaneamente non disponibile', '<p>' + esc(text) + '</p>');
   }

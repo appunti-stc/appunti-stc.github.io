@@ -33,8 +33,13 @@ window.APP_CONFIG = {
   // Limite per singolo file in MB (50 con 'supabase', fino a 500 con 'b2')
   maxUploadMb: 500,
 
+  // Indirizzo del Worker di Cloudflare che fa da ponte verso Backblaze (vuoto = link diretti).
+  // Es. 'https://appunti-stc-file.NOME.workers.dev'
+  downloadProxy: '',
+
   // Avviso temporaneo: se è scritto un messaggio, i file su Backblaze non si aprono né si scaricano
   // e al loro posto compare questo testo (es. limite giornaliero di download raggiunto).
+  // Gli amministratori vedono comunque i file (per provare che tutto funzioni).
   // Per tornare alla normalità: filesNotice: '',
   filesNotice: 'Stiamo lavorando per risolvere il problema. Ci scusiamo per il disagio.',
 };

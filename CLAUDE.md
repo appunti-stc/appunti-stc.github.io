@@ -28,6 +28,9 @@ immagini, audio e video. Fatto da Aleksey Symonenko (rappresentante, utente non 
   Secrets GitHub: `SERVICE_TOKEN` + i 4 R2. Il ramo di default è quello del sito (serve per lo schedule).
 - **Codice di servizio** (Amministrazione → Importazione): usato da script Google e robot; nel DB solo l'hash
   (`app_settings.service_token_hash`); RPC `import_*` e `robot_*` lo verificano.
+- **Worker Cloudflare** (`cloudflare-worker/worker.js`, da incollare nel pannello Cloudflare): ponte per i link firmati di B2,
+  così i download non contano nel limite gratuito di Backblaze (1 GB/giorno). Attivo se `docs/config.js` → `downloadProxy`
+  ha l'indirizzo `….workers.dev`. `filesNotice` in config.js = avviso temporaneo sui file B2 (non per gli admin).
 - **Google OAuth** (Google Cloud, app "e-Learning Bicocca", in produzione) collegato a Supabase.
 - Accesso consentito solo a `@campus.unimib.it` (controllato dal database, `is_campus()`).
 
@@ -49,7 +52,7 @@ nelle liste (Corsi, dashboard, ricerca corsi) le righe con stesso nome+laurea so
 in app.js, nessuna modifica al DB) e l'anno accademico si sceglie **dentro** il corso (barra `.aa-tabs`, più "Tutti" = `?aa=tutti`);
 caricando si sceglie l'anno (l'anno in corso, se manca, viene creato al primo file); rinomina/spostamento valgono per tutti gli anni; menu ⋯
 sulle schede per modificare/spostare (solo admin); upload su B2 fino a 500 MB; anteprime
-PDF/immagini/audio/video; dashboard con i corsi aperti di recente (tabella `course_visits`, uguale su ogni dispositivo; localStorage solo di riserva); ricerca; classifica a leghe (punti: +10 file max 10/giorno, +5 a chi carica per ogni studente diverso
+PDF/immagini/audio/video; dashboard con i corsi aperti di recente (tabella `course_visits`, uguale su ogni dispositivo; localStorage solo di riserva); ricerca; classifica a leghe (mostra la top 10 + la propria riga separata se fuori; punti: +10 file max 10/giorno, +5 a chi carica per ogni studente diverso
 che apre il file, +1 a chi apre un file nuovo max 5/giorno (`file_opens.reader_points`), −10 se un admin elimina;
 per gli autori Drive non iscritti `import_credits.view_points`); segnalazioni, sospensione utenti; file protetti 📌; pulizia
 automatica per archivio (documenti: aperture ultimi 548 giorni; registrazioni: 365; mai file < 14 giorni né
